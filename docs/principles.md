@@ -23,16 +23,16 @@
 
 | 用途 | Python 包（首选） | 外部 CLI（降级） | 说明 |
 |---|---|---|---|
-| **pcap 解析** | **`scapy`** | tshark | scapy `pip install` 即用；tshark 需先装 Wireshark，体积大、版本漂移 |
-| **HTTP 协议层字段提取** | `scapy` + `http-parser` / `mitmproxy` | tshark `-T fields` | 字段位置明确时优先 scapy；协议层深度依赖时降级 tshark |
+| **pcap 解析** | (见 §1.4.1 例外) | **`tshark`** | v0.2.0+ 触发 §1.4 (2)「性能差距 ≥ 10×」例外，仅保留 tshark |
+| **HTTP 协议层字段提取** | (见 §1.4.1 例外) | tshark `-T fields` | 与 pcap 解析共用 tshark |
 | **DNS 协议解析** | `dnspython` | dig / nslookup | |
 | **YAML 读写** | `PyYAML` | yq | |
-| **SSH key 生成** | `cryptography` | ssh-keygen | 已落地，见 `tools/generate_ssh_key.py` |
+| **SSH key 生成** | `cryptography` | ssh-keygen | 已落地，见 `src/tools/generate_ssh_key.py` |
 | **HTTP 客户端** | `requests` / `httpx` | curl | |
 | **终端彩色输出** | `rich` | 手写 ANSI | |
-| **PCAPNG 写入** | `scapy.utils.PcapWriter` | editcap / mergecap | |
+| **PCAPNG 写入** | (留空) | editcap / mergecap | 项目目前不写 pcap，留空 |
 
-> **示例**：本项目当前所有 pcap 分析**默认走 scapy**；只有当 scapy 解析失败（罕见畸形包）才降级到 tshark。
+> **示例**：本项目当前所有 pcap 分析**走 tshark**（性能 12× 差距 + 应急场景对延迟敏感）。详见 §1.4.1 已触发的例外条款。
 
 ### 1.4 例外情况（允许用外部 CLI 的场景）
 
@@ -70,13 +70,17 @@
 - 调用走 `subprocess.run([...], capture_output=True, text=True, encoding='utf-8')`，**不要**走 shell
 - 路径用绝对路径或 `Path`，不要相信 PATH
 
-### 1.6 对历史决策的影响
+### 1.6 历史决策演化（按时序记录）
 
-| 文档 | 旧决策 | 新决策 | 原因 |
-|---|---|---|---|
-| `ARCHITECTURE.md` §4.1 | "为什么用 tshark 而不是 scapy" | **默认 scapy，tshark 作降级** | scapy 跨平台一致；本铁律 §1.2 |
-| `README.md` 关键洞察 #4 | "tshark 比 strings 精准 15-20 倍" | 改为"scapy 比 strings 精准 N 倍，且**无需装 Wireshark**" | 本铁律 §1.1 |
-| `CHANGELOG.md` 设计决策 | "tshark + Python" | "scapy + Python，tshark 降级" | 本铁律 §1.1 |
+本节记录 §1.3 优先级表的决策在实际落地中如何演化（按版本号时序）：
+
+| 版本 | 决策 | 触发事件 |
+|---|---|---|
+| v0.1.0 | 默认 scapy，tshark 作降级 | 首次按 §1.3 表执行；scapy `pip install` 即用，跨平台一致 |
+| v0.2.0 | **tshark 单后端**，删除 scapy fallback | 实测性能差距 12×（scapy 110s vs tshark 9s on web_attack.pcap 174MB）+ 内存峰值差 40×（6GB vs 150MB），触发 §1.4 (2)「性能差距 ≥ 10×」例外 |
+| v0.3.0 | 维持 tshark 单后端 | login-analyze 复用同一 tshark 后端，验证稳定 |
+
+**可移植性代价**：无 tshark 二进制时跑不动。补救：v0.2.0 用户群是 CTF 应急分析师（Windows x64 为主），跨平台留给 v1.0.0 届时按平台瘦身 tshark 子集。
 
 ---
 

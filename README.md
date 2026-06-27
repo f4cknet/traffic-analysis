@@ -47,9 +47,9 @@ python src/analyze.py --pcap web_attack.pcap -m loginpath
 
 ## 当前状态
 
-**v0.2.0** — 首模块（扫描器识别）已发布
+**v0.3.0** — 第二模块 `login-analyze` 已发布（双重过滤：响应状态 2xx/3xx + POST-only + longest-match-first）
 
-下一个迭代 v0.3.0 加 webshell 上传时间轴。
+下一个迭代 v0.4.0 计划做多协议支持（SMB / FTP / MySQL / Redis）或直接进 webshell 上传时间轴。详见 [docs/ROADMAP.md](docs/ROADMAP.md)。
 
 ## 关键洞察
 

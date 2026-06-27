@@ -19,8 +19,8 @@ out/
 *.tsv
 
 # 一次性 debug / 临时文件
-tools/_debug/
-tools/_tmp/
+src/_debug/
+src/_tmp/
 *.tmp
 *.bak
 *.swp
