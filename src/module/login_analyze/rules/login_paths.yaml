@@ -1,0 +1,300 @@
+# login_paths.yaml - 登录后台路径模式库
+#
+# 用途: 识别攻击者扫描的登录后台. URI path 命中 patterns 即视为该后台被访问.
+#
+# 加新后台: 加一条规则, 加 patterns 即可. 代码无需改.
+#
+# 注意:
+# - patterns 是 uri_path 的子串 (不分大小写)
+# - query string 不参与匹配 (由 parse_records 拆 uri_path)
+# - patterns 要具体 (避免误报): 比如 /login 比 /log 更精准
+
+login_paths:
+
+  # ============== 一线: 通用管理后台 ==============
+  - id: admin_generic
+    name: 通用管理后台 (/admin/)
+    category: admin
+    description: 最常见的管理后台路径前缀
+    patterns:
+      - "/admin/"
+      - "/admin/login"
+      - "/admin/index"
+      - "/admin/admin"
+      - "/admin/manage"
+      - "/administrator/"
+      - "/administrator/login"
+      - "/admin.php"
+      - "/manage/"
+      - "/manage/login"
+      - "/management/"
+      - "/backstage/"
+      - "/admin123"
+      - "/admin888"
+      - "/admin_"
+      - "/_admin/"
+
+  - id: login_generic
+    name: 通用登录入口 (/login)
+    category: login
+    description: 常见登录入口
+    patterns:
+      - "/login"
+      - "/login.php"
+      - "/login.html"
+      - "/user/login"
+      - "/users/login"
+      - "/account/login"
+      - "/signin"
+      - "/sign-in"
+      - "/auth/login"
+      - "/auth/signin"
+
+  # ============== 二线: CMS 后台 ==============
+  - id: wordpress
+    name: WordPress 后台
+    category: cms
+    description: WordPress 自带登录路径
+    patterns:
+      - "/wp-login.php"
+      - "/wp-admin/"
+      - "/wp-admin/admin-ajax.php"
+
+  - id: dedecms
+    name: Dedecms 后台
+    category: cms
+    description: Dedecms (织梦) 后台默认路径
+    patterns:
+      - "/dede/"
+      - "/dede/login.php"
+      - "/dede/index.php"
+
+  - id: discuz
+    name: Discuz! 后台
+    category: cms
+    description: Discuz! 后台默认路径
+    patterns:
+      - "/uc_server/"
+      - "/uc_server/admincp.php"
+      - "/admincp.php"
+      - "/forum.php?mod=admin"
+
+  - id: typecho
+    name: Typecho 后台
+    category: cms
+    description: Typecho 后台
+    patterns:
+      - "/admin/login.php"
+      - "/admin/manage-posts.php"
+
+  - id: drupal
+    name: Drupal 后台
+    category: cms
+    description: Drupal 自带登录路径
+    patterns:
+      - "/user/login"
+      - "/user/register"
+      - "/admin/"
+      - "/?q=admin"
+
+  # ============== 三线: 数据库/服务管理后台 ==============
+  - id: phpmyadmin
+    name: phpMyAdmin
+    category: db
+    description: 经典 MySQL Web 管理后台
+    patterns:
+      - "/phpmyadmin/"
+      - "/phpmyadmin/index.php"
+      - "/phpMyAdmin/"
+      - "/pma/"
+      - "/mysql/"
+      - "/dbadmin/"
+      - "/sqlmanager/"
+
+  - id: adminer
+    name: Adminer (单文件 DB 管理)
+    category: db
+    description: Adminer 单文件数据库管理工具
+    patterns:
+      - "/adminer.php"
+      - "/adminer/"
+      - "/adminer-4."
+
+  - id: pgadmin
+    name: pgAdmin
+    category: db
+    description: PostgreSQL Web 管理
+    patterns:
+      - "/pgadmin/"
+      - "/pgadmin4/"
+
+  - id: redis_commander
+    name: Redis Commander
+    category: db
+    description: Redis Web 管理
+    patterns:
+      - "/redis-commander"
+      - "/redis_ui"
+
+  # ============== 四线: 框架自带登录/console ==============
+  - id: spring_boot
+    name: Spring Boot Actuator
+    category: framework
+    description: Spring Boot actuator 端点 (含 /env /heapdump 等敏感信息)
+    patterns:
+      - "/actuator/"
+      - "/actuator/env"
+      - "/actuator/health"
+      - "/actuator/heapdump"
+
+  - id: symfony
+    name: Symfony Profiler
+    category: framework
+    description: Symfony 调试工具 (生产环境暴露是大忌)
+    patterns:
+      - "/_profiler/"
+      - "/_debug/"
+      - "/configurator/"
+      - "/app.php/_profiler"
+
+  - id: django
+    name: Django Admin
+    category: framework
+    description: Django 自带 admin
+    patterns:
+      - "/admin/login/"
+      - "/django-admin/"
+      - "/admin/jsi18n/"
+
+  - id: flask
+    name: Flask Debug / Admin
+    category: framework
+    description: Flask Werkzeug debugger (PIN 暴露可 RCE)
+    patterns:
+      - "/console"
+      - "/debug"
+      - "/flask-admin/"
+
+  - id: rails
+    name: Ruby on Rails
+    category: framework
+    description: Rails 自带 admin
+    patterns:
+      - "/rails/info"
+      - "/rails/routes"
+      - "/admin/rails"
+
+  - id: tomcat
+    name: Tomcat Manager
+    category: framework
+    description: Apache Tomcat 管理后台 (默认账号 tomcat/tomcat 爆破常见)
+    patterns:
+      - "/manager/html"
+      - "/manager/status"
+      - "/host-manager/html"
+
+  - id: weblogic
+    name: WebLogic Console
+    category: framework
+    description: Oracle WebLogic 管理控制台
+    patterns:
+      - "/console/login"
+      - "/console"
+      - "/wls-wsat/"
+      - "/bea_wls_internal"
+
+  - id: jenkins
+    name: Jenkins
+    category: framework
+    description: Jenkins CI/CD 管理
+    patterns:
+      - "/jenkins/login"
+      - "/jenkins/"
+      - "/scriptText"
+
+  - id: swagger
+    name: Swagger UI
+    category: framework
+    description: API 文档/调试 (泄露内部 API 细节)
+    patterns:
+      - "/swagger-ui.html"
+      - "/swagger-ui/"
+      - "/v2/api-docs"
+      - "/v3/api-docs"
+      - "/api-docs"
+
+  - id: kibana
+    name: Kibana
+    category: framework
+    description: ELK Kibana 控制台
+    patterns:
+      - "/kibana/"
+      - "/_plugin/kibana/"
+      - "/app/kibana"
+
+  - id: grafana
+    name: Grafana
+    category: framework
+    description: Grafana 监控面板
+    patterns:
+      - "/grafana/"
+      - "/grafana/login"
+
+  # ============== 五线: Web 应用默认后台 ==============
+  - id: nexus
+    name: Nexus Repository
+    category: app
+    description: Sonatype Nexus 仓库管理
+    patterns:
+      - "/nexus/"
+      - "/nexus/content"
+
+  - id: harbor
+    name: Harbor Registry
+    category: app
+    description: Harbor 镜像仓库
+    patterns:
+      - "/harbor/"
+      - "/harbor/sign-in"
+
+  - id: confluence
+    name: Confluence
+    category: app
+    description: Atlassian Confluence wiki
+    patterns:
+      - "/confluence/login"
+      - "/confluence/dashboard.action"
+
+  - id: gitlab
+    name: GitLab
+    category: app
+    description: GitLab 自带登录
+    patterns:
+      - "/users/sign_in"
+      - "/gitlab/"
+
+  - id: jira
+    name: Jira
+    category: app
+    description: Atlassian Jira
+    patterns:
+      - "/jira/login"
+      - "/jira/dashboard.action"
+      - "/login.action"
+
+  - id: zabbix
+    name: Zabbix
+    category: app
+    description: Zabbix 监控系统
+    patterns:
+      - "/zabbix/"
+      - "/zabbix.php"
+
+  - id: ruoyi
+    name: 若依 (RuoYi) 后台
+    category: app
+    description: 国内最常见开源后台框架
+    patterns:
+      - "/captcha/captchaImage"
+      - "/prod-api/"
+      - "/login"   # RuoYi 默认登录路径就是 /login (上面已匹配, 这里只是注释)

@@ -37,6 +37,15 @@
 - **CLI 入口**: 单一 dispatcher (--module), 避免每个 module 一个 entry script
 - **后端选型**: 仅 tshark, 不保留 scapy fallback (性能 12× 差距 + 应急场景对延迟敏感)
 
+### Added (login-analyze)
+- `src/module/login_analyze/` — 第二问"黑客扫描到的登录后台"模块
+  - `rules/login_paths.yaml` — 5 类共 ~25 个登录后台路径模式 (admin/CMS/db/framework/tomcat)
+  - `script/matcher.py` — 路径模式匹配 (基于 uri_path, 排除 query 干扰)
+  - `script/aggregator.py` — 聚合 (path × IP 访问次数 × 时间范围)
+  - `script/report.py` — 控制台 print_summary 输出答案
+  - `test/` — pytest 单测
+- `--module login-analyze` dispatcher route
+
 ### 历史 Unreleased 改动 (本次重构前)
 
 > 以下是重构前已 push 但还没发布的改动, 重构后全部并入新结构.

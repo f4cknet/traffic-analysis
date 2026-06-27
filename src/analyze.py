@@ -51,11 +51,13 @@ from src.core import STD_HEADERS, find_tshark, parse_records, ts_to_str
 # CLI --module 用连字符 (人类友好), Python import 用下划线 (PEP 8)
 MODULE_NAME_MAP = {
     "scanner-analyze": "scanner_analyze",
+    "login-analyze": "login_analyze",
 }
 
 
 AVAILABLE_MODULES = {
     "scanner-analyze": ("scanner_analyze", "rules/scanners.yaml"),
+    "login-analyze":   ("login_analyze",   "rules/login_paths.yaml"),
 }
 
 
@@ -133,7 +135,9 @@ def main():
     # 1. 加载规则
     print(f"[1/3] 加载规则库: {rules_path}", file=sys.stderr)
     rules = mod.load_rules(rules_path)
-    print(f"  规则数: {len(rules['scanners'])}", file=sys.stderr)
+    # 通用 key: scanner-analyze 用 'scanners', login-analyze 用 'login_paths'
+    rule_count = len(rules.get("scanners") or rules.get("login_paths") or [])
+    print(f"  规则数: {rule_count}", file=sys.stderr)
 
     # 2. 解析 pcap
     print(f"[2/3] 解析 pcap...", file=sys.stderr)

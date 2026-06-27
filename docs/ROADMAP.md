@@ -73,9 +73,35 @@
 
 ---
 
-## v0.3.0 — HTTP body 提取
+## v0.3.0 — login-analyze + HTTP body 提取
 
-**目标**：解决"flag 在响应 body 里"的场景。
+**目标**：v0.2.0 答了"用了什么扫描器"。v0.3.0 答**"扫描到哪些登录后台"**（第二问）+"flag 在响应 body 里"。
+
+**v0.3.0 范围**：
+- `src/module/login_analyze/` — 登录后台路径模式匹配 + 攻击者画像
+  - `rules/login_paths.yaml` — admin/CMS/db/framework/tomcat 5 类
+  - 输出：扫描到的登录后台路径 + 探测 IP + 探测次数 + 时间范围
+- (后续 v0.3.0+) HTTP body 提取 + 关键字扫描
+
+**`login_analyze` 数据流**：
+
+```
+pcap
+  │ src.core.pcap_parser.parse_records (共享)
+  ▼
+records
+  │ matcher.match_login_path (uri_path 匹配 login_paths.yaml)
+  ▼
+hits (path_id × IP × ts)
+  │ aggregator.build_path_summary + build_attacker_profile
+  ▼
+后台访问排行 + 攻击者画像
+  │ report.print_summary (控制台)
+  ▼
+答案
+```
+
+跑测试：`python -m pytest src/module/login_analyze/test/`
 
 **交付**：
 - [ ] 响应 body 提取（scapy `HTTPResponse` 层 + reassembly）
