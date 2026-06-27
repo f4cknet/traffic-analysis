@@ -90,31 +90,113 @@ def resolve_rules_path(cli_name: str, custom: Path | None) -> Path:
 
 # ============== CLI ==============
 
-def main():
-    parser = argparse.ArgumentParser(
-        description="CTF 应急流量分析 - CLI dispatcher",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=f"""
-输出: 控制台打印高可疑结果摘要 (TOP 攻击者 + 扫描器列表 + 关键结论).
-       Markdown 报告留待后续模块.
+EPILOG = f"""
+CTF 应急流量分析 - 4 个分析模块 (单一 dispatcher):
+
+  scanner    答'用了什么扫描器' — UA/header/payload 三段式匹配 (e.g. AWVS / sqlmap)
+  loginpath  答'哪些是登录后台'   — longest-match-first + 双重过滤 (POST + 2xx/3xx)
+  cred       答'凭证被服务端接受' — 响应 302/303 过滤 + POST body 字段别名提取
+  webshell   答'上传了哪个 webshell' — multipart filename + 代码内容解析 (eval/$_POST)
+
+数据流:
+  pcap
+    │ tshark -T fields (协议层解析)
+    ▼
+  records (71k HTTP 请求 from web_attack.pcap)
+    │ module.analyze
+    ▼
+  stats (path / credential / access / upload 聚合)
+    │ module.print_summary
+    ▼
+  控制台高可疑结果摘要
+
+═══════════════════════════════════════════════════════════════════════
+典型用法 (以 web_attack.pcap 为例)
+═══════════════════════════════════════════════════════════════════════
+
+# ① 扫描器识别 (默认 module)
+python src/analyze.py --pcap web_attack.pcap
+# 等价: python src/analyze.py --pcap web_attack.pcap -m scanner
+# 答: AWVS (header 命中 352) + sqlmap (UA 命中 6) + 主攻 192.168.94.59
+
+# ② 登录后台检测
+python src/analyze.py --pcap web_attack.pcap -m loginpath
+# 答: /admin/login.php?rec=login (2822 POST 命中)
+
+# ③ 登录凭证提取 (默认 302/303 算登录成功, form submit 场景)
+python src/analyze.py --pcap web_attack.pcap -m cred
+# 答: admin/admin!@#pass123 (16:03 302) + 人事/hr123456 (14:35 302)
+
+# ③' RESTful API 场景: 自定义登录成功码 (200 算成功)
+python src/analyze.py --pcap api.pcap -m cred --login-success-code 200
+
+# ③'' 移动端 API: 多值
+python src/analyze.py --pcap api.pcap -m cred --login-success-code 200,201
+
+# ④ webshell 专项
+python src/analyze.py --pcap web_attack.pcap -m webshell
+# 答: 1.php (16:12:49 上传) → eval → 密码 1234
+
+# 自定义 YAML 规则库
+python src/analyze.py --pcap x.pcap -m scanner --rules my_scanners.yaml
+
+═══════════════════════════════════════════════════════════════════════
+完整攻击链 (v0.3.0 → v0.4.2 → v0.5.1 链接 web_attack.pcap)
+═══════════════════════════════════════════════════════════════════════
+
+14:35  伴攻 192.168.94.233  登录成功 (人事/hr123456)            ← v0.4.2
+16:03  主攻 192.168.94.59   登录成功 (admin/admin!@#pass123)     ← v0.4.2
+16:12  主攻  上传 1.php (eval($_POST[1234])) 到 /admin/...     ← v0.5.0 + v0.5.1
+
+═══════════════════════════════════════════════════════════════════════
+跑测试
+═══════════════════════════════════════════════════════════════════════
+
+python -m pytest src/                       # 全部 234 个测试
+python -m pytest src/module/webshell_analyze/test/   # 单 module 测试
 
 可用 module: {', '.join(AVAILABLE_MODULES.keys())}
+"""
 
-示例:
-  python src/analyze.py --pcap web_attack.pcap
-  python src/analyze.py --pcap web_attack.pcap --module scanner-analyze
-  python src/analyze.py --pcap web_attack.pcap -m cred --login-success-code 302
-  python src/analyze.py --pcap web_attack.pcap -m cred --login-success-code 200
-        """,
+
+def main():
+    parser = argparse.ArgumentParser(
+        prog="analyze.py",
+        description="CTF 应急流量分析 - CLI dispatcher (scanner / loginpath / cred / webshell)",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=EPILOG,
     )
-    parser.add_argument("--pcap", required=True, type=Path, help="pcap/pcapng 文件路径")
+    parser.add_argument("--pcap", required=False, type=Path, default=None,
+                        help="pcap/pcapng 文件路径 (必填, 除非用 --list-modules)")
     parser.add_argument("-m", "--module", choices=list(AVAILABLE_MODULES.keys()),
-                        default="scanner", help="分析模块 (默认 scanner, 选项: scanner|loginpath|cred|webshell)")
-    parser.add_argument("--rules", type=Path, default=None, help="自定义 YAML 规则库路径")
+                        default="scanner",
+                        help="分析模块: scanner (默认, 扫描器识别) | "
+                             "loginpath (登录后台) | cred (登录凭证) | webshell (webshell 专项)")
+    parser.add_argument("--rules", type=Path, default=None,
+                        help="自定义 YAML 规则库路径 (默认用模块自带的 yaml, "
+                             "如 src/module/scanner_analyze/rules/scanners.yaml)")
     parser.add_argument("--login-success-code", type=str, default="302,303",
                         help="登录成功的响应码 (逗号分隔), 仅 -m cred 生效. "
-                             "默认 302,303 (form submit 标准); RESTful API 场景用 --login-success-code 200")
+                             "默认 302,303 (form submit 标准); "
+                             "RESTful API 场景: --login-success-code 200; "
+                             "移动端 API: --login-success-code 200,201")
+    parser.add_argument("--list-modules", action="store_true",
+                        help="列出所有可用模块并退出")
     args = parser.parse_args()
+
+    if args.list_modules:
+        print("可用模块 (按 v0.x 版本排序):")
+        for cli_name, (py_name, rules_rel) in AVAILABLE_MODULES.items():
+            print(f"  -m {cli_name:<10} ({py_name}) — 规则库: {rules_rel}")
+        sys.exit(0)
+
+    if args.pcap is None:
+        print(f"[错误] --pcap 必填 (或用 --list-modules 看可用模块)", file=sys.stderr)
+        sys.exit(1)
+
+    if not args.pcap.exists():
+        print(f"[错误] pcap 不存在: {args.pcap}", file=sys.stderr)
+        sys.exit(1)
 
     if not args.pcap.exists():
         print(f"[错误] pcap 不存在: {args.pcap}", file=sys.stderr)
