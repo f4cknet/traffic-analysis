@@ -12,7 +12,7 @@ import subprocess
 import time
 from pathlib import Path
 
-from .utils import TSHARK_FIELDS, split_uri
+from .utils import TSHARK_FIELDS, hex_to_bytes, split_uri
 
 
 def find_tshark() -> Path:
@@ -114,6 +114,10 @@ def parse_records(pcap_path: Path, tshark_path: Path) -> tuple[dict, dict]:
             # payload_str 不含 query string (防 query 诱导)
             payload_str = " ".join([uri_path, ua, host, method])
 
+            # POST body (http.file_data 是 hex 编码) — credential_analyze 用来提取登录凭证
+            content_type = f.get("http.content_type") or ""
+            post_body_bytes = hex_to_bytes(f.get("http.file_data") or "")
+
             requests.append({
                 "kind": "request",
                 "ts_epoch": ts_epoch, "ip_src": ip_src,
@@ -121,6 +125,8 @@ def parse_records(pcap_path: Path, tshark_path: Path) -> tuple[dict, dict]:
                 "method": method, "host": host,
                 "uri": raw_uri, "uri_path": uri_path, "uri_query": uri_query,
                 "ua": ua, "headers": headers,
+                "content_type": content_type,
+                "post_body_bytes": post_body_bytes,
                 "payload_str": payload_str,
             })
         elif response_code:

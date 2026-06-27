@@ -89,6 +89,49 @@ STD_HEADERS = {
     "If-Modified-Since", "If-None-Match", "TE",
 }
 
+
+# ============== tshark hex body 解码 ==============
+
+def hex_to_bytes(hex_str: str) -> bytes:
+    """
+    tshark -T fields 导出的 http.file_data 是 hex 编码字符串 (e.g. "757365726e616d65" for "username").
+
+    安全 decode: 偶数长度则成对 unpack; 奇数/非 hex 字符/空串 -> b''.
+
+    偶数长度校验: 截断末位避免 unhexlify ValueError.
+    """
+    if not hex_str:
+        return b""
+    s = hex_str.strip()
+    if len(s) % 2 == 1:
+        s = s[:-1]  # 偶数对齐, 丢最后一位 (罕见畸形)
+    try:
+        return bytes.fromhex(s)
+    except ValueError:
+        return b""
+
+
+def decode_body_str(body_bytes: bytes, encoding_hint: str = "") -> str:
+    """
+    解码 POST body 字节为字符串. 优先 encoding_hint (e.g. "utf-8"), 失败 fallback 到 utf-8/latin-1.
+
+    tshark 解码中文 Windows 站常遇 GBK, 不强制尝试 (避免误判); 后续 credential_analyze 走调用方传 hint.
+    """
+    if not body_bytes:
+        return ""
+    # 先按 hint (lowercase base name)
+    hint = ""
+    if encoding_hint:
+        hint = encoding_hint.split(";")[0].strip().lower()
+    for enc in [hint, "utf-8", "latin-1"]:
+        if not enc:
+            continue
+        try:
+            return body_bytes.decode(enc)
+        except (UnicodeDecodeError, LookupError):
+            continue
+    return body_bytes.decode("latin-1", errors="replace")
+
 # tshark 一次性导出的 HTTP 字段
 #
 # 同时包含 request 和 response 字段, 不带 filter, 由 parse_records 按字段是否
@@ -105,6 +148,8 @@ TSHARK_FIELDS = [
     "http.user_agent",
     "http.request.line",
     "http.response.code",
+    "http.content_type",          # 用于区分 form-urlencoded / multipart / json
+    "http.file_data",             # POST body 字节 (hex 编码, e.g. "75736572")
 ]
 
 # HTTP 响应状态码 -> (是否"找到了" 的后台)
