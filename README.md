@@ -31,27 +31,23 @@ cd traffic-analysis
 
 # 2. 安装 Python 依赖
 pip install -r requirements.txt -r requirements-dev.txt
-
-# 3. 准备 pcap 文件（不入仓库, 单独放在本地）
-#    e.g. copy 到 D:\ctf\xxx.pcap
 ```
 
-### 跑分析（4 个 module）
+### 跑分析
 
 ```powershell
-# ① 扫描器识别 (默认 module) — 答"用了什么扫描器"
-python src/analyze.py --pcap web_attack.pcap
-# 等价: python src/analyze.py --pcap web_attack.pcap -m scanner
+# 扫描器分析（awvs、sqlmap、nessus等）
+python src/analyze.py --pcap web_attack.pcap -m scanner 
 
-# ② 登录后台检测 — 答"哪些是登录后台 + 哪些 IP 探测了"
+# 登录地址分析（admin.php,admin/login.php,index.php?c=admin&m=login等）
 python src/analyze.py --pcap web_attack.pcap -m loginpath
 
-# ③ 登录凭证提取 — 答"哪些凭证被服务端接受 (302/303) + 用了什么账号密码"
+# 登录凭证分析
 python src/analyze.py --pcap web_attack.pcap -m cred
 # 自定义登录成功状态码 (RESTful API 场景 200 算成功):
 python src/analyze.py --pcap api.pcap -m cred --login-success-code 200
 
-# ④ webshell 专项 — 答"上传了哪个 webshell + 文件名 + 上传时间 + 密码"
+# 上传webshell分析（webshell文件名、webshell密码、上传时间）
 python src/analyze.py --pcap web_attack.pcap -m webshell
 ```
 
@@ -74,11 +70,11 @@ python -m pytest src/module/webshell_analyze/test/
 
 ## 各模块输出对照表（以 web_attack.pcap 为例）
 
-| Module | CLI | 答的题 | v0.5.1 实际输出 |
+| Module | CLI | 功能描述 | 输出案例 |
 |---|---|---|---|
 | `scanner` | `-m scanner` | 用了什么扫描器 | AWVS (header 命中 352) + sqlmap (UA 命中 6)，攻击者 192.168.94.59 |
 | `loginpath` | `-m loginpath` | 哪些登录后台 | `/admin/login.php?rec=login` (2822 POST 命中) |
-| `cred` | `-m cred` | 哪些账号密码被接受 | `admin/admin!@#pass123` (16:03 302) + `人事/hr123456` (14:35 302) |
+| `cred` | `-m cred` | 哪些账号密码登录成功 | `admin/admin!@#pass123` (16:03 302) + `人事/hr123456` (14:35 302) |
 | `webshell` | `-m webshell` | 上传了哪个 webshell + 密码 | `1.php` (16:12:49 上传) → eval → 密码 `1234` |
 
 ## 文档导航
