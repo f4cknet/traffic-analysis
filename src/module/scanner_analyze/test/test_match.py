@@ -64,7 +64,8 @@ def test_match_xff_injector(rules, awvs_request):
 
 def test_match_returns_sorted_results(rules, mixed_records):
     """match_scanner 返回 [(sc, segs, w), ...] 列表, 每项是 3 元组"""
-    for rec in mixed_records:
+    # mixed_records 现在是 http_data 字典
+    for rec in mixed_records["requests"]:
         hits = match_scanner(rec, rules)
         for item in hits:
             assert len(item) == 3

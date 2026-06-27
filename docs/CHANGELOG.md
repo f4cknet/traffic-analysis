@@ -4,6 +4,18 @@
 
 ## [Unreleased]
 
+### Changed
+- **login_analyze 响应状态过滤**: 用 `tcp.stream` 关联 request/response, **只保留 2xx/3xx 响应**
+  - 攻击者大量 404 目录扫描噪声被过滤
+  - 报告输出从"10183 次访问"过滤到"3559 次真找到"
+  - 完整 URL (含 query) 保留输出 (支持 ThinkPHP 路由 `/index.php/Home/Login.html`)
+  - 端到端 web_attack.pcap 验证: 真找到 2 个后台, 之前是 10+ 个 噪声
+- **records contract 升级**: `parse_records` 现在返回 `{requests, responses_by_stream}`
+  - tshark 同时导出 `tcp.stream` + `http.response.code` 字段
+  - module.analyze 接 `http_data` (而不是 records list), 自己取所需字段
+  - scanner-analyze 接 http_data 只用 requests (兼容, 行为不变)
+- **core/utils.py**: 新增 `SUCCESS_RESPONSE_CODES = {200, 201, 202, 204, 301-308}`
+
 ### Added
 - 目录结构重构: `src/` 统一 + `module/{name}/{rules,script,test}/` 分层
   - `src/core/` — 跨 module 共享 (pcap_parser + utils)

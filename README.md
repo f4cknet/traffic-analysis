@@ -27,8 +27,11 @@ cd traffic-analysis
 # 2. 准备 pcap 文件
 #    (pcap 文件不入仓库, 单独放在本地)
 
-# 3. 跑扫描器检测
+# 3. 跑分析 (默认扫描器检测)
 python src/analyze.py --pcap web_attack.pcap
+
+#    登录后台检测
+python src/analyze.py --pcap web_attack.pcap -m loginpath
 ```
 
 ## 文档导航

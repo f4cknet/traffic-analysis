@@ -58,7 +58,7 @@ def test_analyze_first_seen_recorded(rules, mixed_records):
 
 def test_analyze_empty_records(rules):
     """空 records 应不崩溃"""
-    stats = analyze([], rules)
+    stats = analyze({"requests": [], "responses_by_stream": {}}, rules)
     assert stats["total"] == 0
     assert stats["scanner_hits"] == {}
     assert stats["suspects"] == []

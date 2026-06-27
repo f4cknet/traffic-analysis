@@ -45,18 +45,27 @@ def _parse_request_line(req_line: str) -> dict[str, str]:
     return headers
 
 
-def parse_records(pcap_path: Path, tshark_path: Path) -> tuple[list[dict], dict]:
+def parse_records(pcap_path: Path, tshark_path: Path) -> tuple[dict, dict]:
     """
-    tshark 一次性导出 HTTP 字段, 拆 URI path/query, 返回 records list
+    tshark 一次性导出 HTTP request + response 帧, 按字段分流, 返回:
 
-    返回 records 字段:
-        ts_epoch, ip_src, method, host,
+    - requests: list[dict] — request 帧 (含 uri/ua/headers/path/query 等)
+    - responses_by_stream: dict[stream_id, status_code] — 同 TCP 流的响应状态
+
+    字段分流逻辑:
+      - http.request.method 非空 -> request 帧
+      - http.response.code   非空 -> response 帧
+      - 两者都为空 -> 跳过 (非 HTTP 或异常帧)
+
+    request records 字段:
+        ts_epoch, kind='request', ip_src, stream_id, method, host,
         uri (完整), uri_path, uri_query (拆分后),
         ua, headers, payload_str (URI path + UA + host + method, 不含 query)
 
-    stats dict: {run_ms, n_rows}
+    stats dict: {run_ms, n_requests, n_responses}
     """
-    cmd = [str(tshark_path), "-r", str(pcap_path), "-Y", "http.request",
+    # 不带 filter, 导所有 HTTP 帧 (request + response 共享 tcp.stream)
+    cmd = [str(tshark_path), "-r", str(pcap_path), "-Y", "http",
            "-T", "fields", "-E", "separator=|"]
     for f in TSHARK_FIELDS:
         cmd += ["-e", f]
@@ -69,41 +78,63 @@ def parse_records(pcap_path: Path, tshark_path: Path) -> tuple[list[dict], dict]
     if r.returncode != 0:
         raise RuntimeError(f"tshark 退出码 {r.returncode}\nstderr: {r.stderr[:500]}")
 
-    records = []
+    requests = []
+    responses_by_stream: dict[str, int] = {}
+
     for line in r.stdout.splitlines():
         parts = line.split("|")
         if len(parts) < len(TSHARK_FIELDS):
             parts += [""] * (len(TSHARK_FIELDS) - len(parts))
         f = dict(zip(TSHARK_FIELDS, parts))
 
-        ip_src = f.get("ip.src") or f.get("ipv6.src") or ""
-        method = f.get("http.request.method") or ""
-        host = f.get("http.host") or ""
-        raw_uri = f.get("http.request.uri") or "/"
-        ua = f.get("http.user_agent") or ""
-
-        # URI 拆分: 防 query string 污染 payload 段
-        uri_path, uri_query = split_uri(raw_uri)
-
-        headers = _parse_request_line(f.get("http.request.line") or "")
-        for k, v in (("Host", host), ("User-Agent", ua)):
-            if v and k not in headers:
-                headers[k] = v
-
-        # payload_str 不含 query string
-        payload_str = " ".join([uri_path, ua, host, method])
-
         try:
             ts_epoch = float(f.get("frame.time_epoch") or 0)
         except (TypeError, ValueError):
             ts_epoch = 0.0
 
-        records.append({
-            "ts_epoch": ts_epoch, "ip_src": ip_src,
-            "method": method, "host": host,
-            "uri": raw_uri, "uri_path": uri_path, "uri_query": uri_query,
-            "ua": ua, "headers": headers,
-            "payload_str": payload_str,
-        })
+        method = f.get("http.request.method") or ""
+        response_code = f.get("http.response.code") or ""
+        stream_id = f.get("tcp.stream") or ""
 
-    return records, {"run_ms": dt_ms, "n_rows": len(records)}
+        if method:
+            # request 帧
+            ip_src = f.get("ip.src") or f.get("ipv6.src") or ""
+            host = f.get("http.host") or ""
+            raw_uri = f.get("http.request.uri") or "/"
+            ua = f.get("http.user_agent") or ""
+
+            # URI 拆分: 防 query string 污染 payload 段
+            uri_path, uri_query = split_uri(raw_uri)
+
+            headers = _parse_request_line(f.get("http.request.line") or "")
+            for k, v in (("Host", host), ("User-Agent", ua)):
+                if v and k not in headers:
+                    headers[k] = v
+
+            # payload_str 不含 query string (防 query 诱导)
+            payload_str = " ".join([uri_path, ua, host, method])
+
+            requests.append({
+                "kind": "request",
+                "ts_epoch": ts_epoch, "ip_src": ip_src,
+                "stream_id": stream_id,
+                "method": method, "host": host,
+                "uri": raw_uri, "uri_path": uri_path, "uri_query": uri_query,
+                "ua": ua, "headers": headers,
+                "payload_str": payload_str,
+            })
+        elif response_code:
+            # response 帧 — 仅存 stream_id -> status_code 映射
+            try:
+                code = int(response_code)
+            except (TypeError, ValueError):
+                continue
+            if stream_id:
+                # 同 stream 多次响应取最后一次 (keep-alive 长连接场景)
+                responses_by_stream[stream_id] = code
+        # else: 既无 method 也无 code, 跳过
+
+    return (
+        {"requests": requests, "responses_by_stream": responses_by_stream},
+        {"run_ms": dt_ms, "n_requests": len(requests), "n_responses": len(responses_by_stream)},
+    )

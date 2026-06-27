@@ -104,7 +104,7 @@ def normal_browser_request():
 @pytest.fixture
 def mixed_records(awvs_request, sqlmap_request, nessus_request, normal_browser_request):
     """6 条不同特征记录的混合 (AWVS x3 + sqlmap + nessus + 正常)"""
-    return [
+    records = [
         awvs_request,
         {**awvs_request, "ts_epoch": 1700000010.0, "uri": "/another/path?id=2"},
         {**awvs_request, "ts_epoch": 1700000020.0, "uri": "/third"},
@@ -112,3 +112,5 @@ def mixed_records(awvs_request, sqlmap_request, nessus_request, normal_browser_r
         nessus_request,
         normal_browser_request,
     ]
+    # 新接口: analyze() 接 http_data = {"requests": [...], "responses_by_stream": {...}}
+    return {"requests": records, "responses_by_stream": {}}

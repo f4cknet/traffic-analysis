@@ -48,21 +48,21 @@ from src.core import STD_HEADERS, find_tshark, parse_records, ts_to_str
 # 每行: (module_name, default_rules_path_or_None)
 # module_name 对应 src/module/<name>/script/
 
-# CLI --module 用连字符 (人类友好), Python import 用下划线 (PEP 8)
+# CLI -m 用短名 (人类友好, 短), Python import 用下划线 (PEP 8)
 MODULE_NAME_MAP = {
-    "scanner-analyze": "scanner_analyze",
-    "login-analyze": "login_analyze",
+    "scanner":   "scanner_analyze",
+    "loginpath": "login_analyze",
 }
 
 
 AVAILABLE_MODULES = {
-    "scanner-analyze": ("scanner_analyze", "rules/scanners.yaml"),
-    "login-analyze":   ("login_analyze",   "rules/login_paths.yaml"),
+    "scanner":   ("scanner_analyze", "rules/scanners.yaml"),
+    "loginpath": ("login_analyze",   "rules/login_paths.yaml"),
 }
 
 
 def load_module(cli_name: str):
-    """动态 import src.module.<name>.script. cli_name 支持连字符, Python 标识符转下划线."""
+    """动态 import src.module.<name>.script"""
     if cli_name not in AVAILABLE_MODULES:
         raise ValueError(
             f"未知 module: {cli_name}. "
@@ -101,8 +101,8 @@ def main():
         """,
     )
     parser.add_argument("--pcap", required=True, type=Path, help="pcap/pcapng 文件路径")
-    parser.add_argument("--module", choices=list(AVAILABLE_MODULES.keys()),
-                        default="scanner-analyze", help="分析模块 (默认 scanner-analyze)")
+    parser.add_argument("-m", "--module", choices=list(AVAILABLE_MODULES.keys()),
+                        default="scanner", help="分析模块 (默认 scanner, 选项: scanner|loginpath)")
     parser.add_argument("--rules", type=Path, default=None, help="自定义 YAML 规则库路径")
     args = parser.parse_args()
 
@@ -143,15 +143,17 @@ def main():
     print(f"[2/3] 解析 pcap...", file=sys.stderr)
     t0 = time.perf_counter()
     try:
-        records, parse_stats = parse_records(args.pcap, tshark_path)
+        http_data, parse_stats = parse_records(args.pcap, tshark_path)
     except Exception as e:
         print(f"[错误] pcap 解析失败: {e}", file=sys.stderr)
         sys.exit(1)
     parse_total_ms = (time.perf_counter() - t0) * 1000
-    print(f"  HTTP 请求数: {len(records)}, tshark 调用 {parse_stats['run_ms']:.0f} ms, "
+    records = http_data["requests"]
+    print(f"  HTTP 请求数: {len(records)}, 响应数: {parse_stats['n_responses']}, "
+          f"tshark 调用 {parse_stats['run_ms']:.0f} ms, "
           f"总耗时 {parse_total_ms:.0f} ms", file=sys.stderr)
 
-    # 自定义 header 统计
+    # 自定义 header 统计 (基于 request records)
     if records:
         custom_h = Counter()
         for r in records:
@@ -164,7 +166,7 @@ def main():
 
     # 3. module 业务处理
     print(f"[3/3] 分析中...", file=sys.stderr)
-    stats = mod.analyze(records, rules)
+    stats = mod.analyze(http_data, rules)
 
     # 输出 (走 stdout)
     mod.print_summary(args.pcap, len(records), parse_stats["run_ms"], stats, rules)

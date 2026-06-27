@@ -90,13 +90,25 @@ STD_HEADERS = {
 }
 
 # tshark 一次性导出的 HTTP 字段
+#
+# 同时包含 request 和 response 字段, 不带 filter, 由 parse_records 按字段是否
+# 为空分流 (request.method 非空 -> request 帧; response.code 非空 -> response 帧).
+# tcp.stream 用于跨帧关联 (同一 TCP 连接所有包共享 stream id).
 TSHARK_FIELDS = [
     "frame.time_epoch",
     "ip.src",
     "ipv6.src",
+    "tcp.stream",
     "http.request.method",
     "http.host",
     "http.request.uri",
     "http.user_agent",
     "http.request.line",
+    "http.response.code",
 ]
+
+# HTTP 响应状态码 -> (是否"找到了" 的后台)
+# 2xx (成功) 和 3xx (重定向到登录页 / 鉴权) 都视为"找到了"
+# 4xx (未找到 / 鉴权拒绝) 和 5xx (服务错误) 视为"探测失败"
+SUCCESS_RESPONSE_CODES = {200, 201, 202, 204,
+                         301, 302, 303, 307, 308}

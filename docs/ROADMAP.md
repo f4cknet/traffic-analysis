@@ -41,24 +41,24 @@
 
 **设计原则**：
 - **目录组织**：按业务分析类型分 module，每个 module 自包含 rules + script + test；共享代码放 src/core/
-- **CLI 入口**：单一 dispatcher (`--module xxx`)，避免每个 module 一个 entry script
+- **CLI 入口**：单一 dispatcher (`-m xxx`)，避免每个 module 一个 entry script
 - **后端选型**：仅 tshark，不保留 scapy fallback（实测 12× 性能差距 + 应急场景对延迟敏感）
 - **规则数据驱动**：scanners.yaml 加一行就能识别新扫描器
-- **测试覆盖**：单测紧耦合 module（`src/module/scanner-analyze/test/`），纯 dict fixture，0.1s 跑完
+- **测试覆盖**：单测紧耦合 module（`src/module/scanner_analyze/test/`），纯 dict fixture，0.1s 跑完
 - **query 污染防护**：payload 段只看 URI path，不含 query string
 
 **交付**：
-- [x] `src/analyze.py` — CLI 入口 + dispatcher (`--module scanner-analyze`)
+- [x] `src/analyze.py` — CLI 入口 + dispatcher (`-m scanner`)
 - [x] `src/core/` — 跨 module 共享 (pcap_parser + utils)
-- [x] `src/module/scanner-analyze/`
+- [x] `src/module/scanner_analyze/` (CLI: `scanner`)
   - [x] `rules/scanners.yaml` — 30 条扫描器规则（搬旧 + 扩 nessus）
   - [x] `script/matcher.py` — `match_scanner` 三段式匹配（query 污染防护）
   - [x] `script/aggregator.py` — `analyze` 全量聚合 + `aggregate_per_ip_scanners`
   - [x] `script/report.py` — 控制台 `print_summary` 高可疑结果摘要
-  - [x] `test/` — 41 个 pytest 单测（含 query 污染防护测试），0.06s 跑完
+  - [x] `test/` — 41 个 pytest 单测（含 query 污染防护测试），0.05s 跑完
 - [x] `src/extend-tools/tshark/` — 瘦身后的 tshark 4.6.6 (110MB / 50 文件)
-- [x] `src/module/webshell-analyze/` — 占位 (v0.3.0+)
-- [x] `src/module/login-analyze/` — 占位 (v0.4.0+)
+- [x] `src/module/webshell_analyze/` — 占位 (CLI: `webshell`, v0.5.0+)
+- [x] `src/module/login_analyze/` — 已落地 (CLI: `loginpath`)
 - [x] `requirements.txt` / `requirements-dev.txt` — 顶层依赖
 - [ ] `examples/web_attack.md` — 真实题目题解（writeup）
 
@@ -67,21 +67,24 @@
 - ✅ 攻击者 IP `192.168.94.59`（71217 请求）、扫描器 AWVS (header 命中 352) + sqlmap (UA 命中 6)、XFF 注入 20952、WebDAV 3 — 全部正确
 - ✅ YAML 加新规则能立即生效（无需改 Python 代码）
 - ✅ query string 含 `acunetix` **不**触发 payload 段（query 污染防护）
-- ✅ `pytest src/module/scanner-analyze/test/` 41 passed in 0.06s
+- ✅ `pytest src/module/scanner_analyze/test/` 41 passed in 0.05s
 - ✅ 解析耗时 ~12s（tshark 9s + analyze < 1s + print_summary < 1s）
 - ⚠ 跨平台：当前 tshark 子集仅 Windows x64；Linux/macOS 需从对应平台安装包按同样策略瘦身
 
 ---
 
-## v0.3.0 — login-analyze + HTTP body 提取
+## v0.3.0 — login-analyze (已完成)
 
-**目标**：v0.2.0 答了"用了什么扫描器"。v0.3.0 答**"扫描到哪些登录后台"**（第二问）+"flag 在响应 body 里"。
+**目标**：v0.2.0 答了"用了什么扫描器"。v0.3.0 答**"扫描到哪些登录后台"**（第二问）。
 
-**v0.3.0 范围**：
+**`login_analyze` (CLI: `loginpath`)**：
+
 - `src/module/login_analyze/` — 登录后台路径模式匹配 + 攻击者画像
-  - `rules/login_paths.yaml` — admin/CMS/db/framework/tomcat 5 类
+  - `rules/login_paths.yaml` — admin/CMS/db/framework/app 5 类共 29 条
   - 输出：扫描到的登录后台路径 + 探测 IP + 探测次数 + 时间范围
-- (后续 v0.3.0+) HTTP body 提取 + 关键字扫描
+- pytest: 27 passed in 0.04s
+
+跑命令：`python src/analyze.py --pcap x.pcap -m loginpath`
 
 **`login_analyze` 数据流**：
 

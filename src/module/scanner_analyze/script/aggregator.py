@@ -12,8 +12,12 @@ from src.core import classify_uri, is_browser_ua
 from .matcher import match_scanner
 
 
-def analyze(records: list[dict], rules: dict) -> dict:
-    """聚合扫描器命中 + 攻击者评分"""
+def analyze(http_data: dict, rules: dict) -> dict:
+    """聚合扫描器命中 + 攻击者评分
+
+    http_data: {"requests": [...], "responses_by_stream": {...}}
+    """
+    records = http_data["requests"]
     total = len(records)
 
     scanner_hits: Counter = Counter()
