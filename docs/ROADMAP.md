@@ -5,11 +5,12 @@
 | 版本 | 主题 | 状态 | 预计交付 |
 |---|---|---|---|
 | v0.1.0 | 项目骨架 | ✅ 已发布 | README + 5 份核心文档 + .gitignore |
-| v0.2.0 | 首模块：扫描器识别 | 🚧 进行中 | scapy 主分析器 + scanners.yaml + 题解样例 |
-| v0.3.0 | HTTP body 提取 | ⏳ | 一键导出 HTTP 对象到目录，找 flag |
-| v0.4.0 | 多协议支持 | ⏳ | SMB / FTP / MySQL / Redis |
+| v0.2.0 | 首模块：扫描器识别 | ✅ 已发布 | scanners.yaml + 三段式匹配 + 41 单测 |
+| v0.3.0 | 第二模块：登录后台检测 (login-analyze) | ✅ 已发布 | login_paths.yaml + 双重过滤 + 38 单测 |
+| v0.4.0 | 第三模块：登录凭证提取 (credential-analyze) | 🚧 进行中 | POST body 解析 + 字段别名 + 端到端验证 |
 | v0.5.0 | webshell 专项 | ⏳ | POST multipart 检测 + 上传时间轴 |
-| v0.6.0 | 自动化答题 | ⏳ | 从题目描述自动判定问题类型 |
+| v0.6.0 | 多协议支持 | ⏳ | SMB / FTP / MySQL / Redis |
+| v0.7.0 | 自动化答题 | ⏳ | 从题目描述自动判定问题类型 |
 | v1.0.0 | 公开版本 | ⏳ | 文档 + 测试 + CI + 跨平台 |
 
 ---
@@ -129,15 +130,56 @@ hits (path_id × IP × ts)
 
 ---
 
-## v0.4.0 — 多协议支持
+## v0.4.0 — credential-analyze (HTTP 登录凭证提取)
 
-**目标**：覆盖非 HTTP 类应急题（SMB 爆破、Redis 未授权、MySQL 拖库等）。
+**目标**：v0.3.0 login-analyze 答了"哪些是登录后台"。v0.4.0 答**"哪些是高度可疑的登录成功尝试 + 提取的账号密码凭证"**。
 
-**交付**：
-- [ ] SMB 协议分析（爆破、横向移动检测）
-- [ ] FTP 协议分析（明文凭证、匿名登录）
-- [ ] MySQL / Redis / MongoDB 协议分析
-- [ ] DNS 隧道检测
+**核心洞察**：
+- v0.3.0 用双重过滤得到 2822 条 POST `/admin/login.php?rec=login` —— 都是"尝试"
+- 现在需要再筛一层：**响应 200/302 才是"服务端接受"** —— 302 是登录成功跳转的金标准，200 是高度可疑（可能是回显带错误信息的登录页）
+- POST body 通常带 `username=xxx&password=yyy`，**明文凭证可直接提取**
+
+**核心逻辑**：
+1. 复用 `login_paths.yaml`（同一套登录接口定义）+ longest-match matcher
+2. 过滤：method=POST + 命中 login path + response.code ∈ {200, 302}
+3. 凭证提取：解析 POST body（application/x-www-form-urlencoded）→ (username, password) 字段对
+4. 字段识别：常见 username 别名（user / username / name / login / email / uname / account）+ password 别名（pwd / password / passwd / pass / passw），**第一条匹配的 username + 第一条匹配的 password**
+
+**架构**：
+- 新 module `src/module/credential_analyze/`（CLI: `cred`）
+- `core/pcap_parser.py` 扩展：加 `http.file_data` 字段（POST body 字节 hex 编码）
+- `credential_analyze/script/`：
+  - `matcher.py` — 复用 longest-match 找登录接口 + body 解析
+  - `aggregator.py` — 按 (path_id, username, password) 聚合 + 攻击者画像
+  - `report.py` — 控制台输出每条可疑凭证（含 response.code + 时间戳 + IP）
+  - `field_aliases.py` — 字段名别名表（hardcoded + 可 YAML 覆盖）
+- yaml 复用 `login_paths.yaml`（不加新 yaml）
+
+**输出示例**（伪）：
+```
+[!] 可疑登录成功尝试 (POST + 200/302):  共 3 条
+
+  192.168.94.59  2018-08-08 14:42:15  POST /admin/login.php?rec=login  → 302
+    username=admin  password=admin123
+  
+  192.168.94.59  2018-08-08 14:42:18  POST /admin/login.php?rec=login  → 302
+    username=admin  password=qwerty
+```
+
+**测试**：
+- pytest fixture：构造 POST dict 模拟请求 + body 字符串
+- 验证：body 解析、字段识别、双重过滤、聚合
+
+**已知限制**（v0.4.0 范围外，留后续）：
+- multipart/form-data 不支持（webshell 上传也用 multipart，v0.6.0 统一处理）
+- JSON body 不支持（API 类登录）
+- 编码：先按 UTF-8 / latin-1 fallback；GBK 等中文编码按需加
+- 同一个 body 多 username 字段取第一条（实际场景罕见）
+
+**端到端验证**（web_attack.pcap）：
+- login-analyze 已得 2822 POST `/admin/login.php?rec=login`
+- 再过 200/302 过滤，期望得到"登录成功高度可疑"的子集
+- 提取凭证后看 admin 用了哪些密码
 
 ---
 
@@ -154,7 +196,19 @@ hits (path_id × IP × ts)
 
 ---
 
-## v0.6.0 — 自动化答题
+## v0.6.0 — 多协议支持
+
+**目标**：覆盖非 HTTP 类应急题（SMB 爆破、Redis 未授权、MySQL 拖库等）。
+
+**交付**：
+- [ ] SMB 协议分析（爆破、横向移动检测）
+- [ ] FTP 协议分析（明文凭证、匿名登录）
+- [ ] MySQL / Redis / MongoDB 协议分析
+- [ ] DNS 隧道检测
+
+---
+
+## v0.7.0 — 自动化答题
 
 **目标**：从题目描述自动判定问题类型，给出结构化答案。
 
