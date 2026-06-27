@@ -91,12 +91,6 @@ def resolve_rules_path(cli_name: str, custom: Path | None) -> Path:
 # ============== CLI ==============
 
 EPILOG = """
-4 个分析模块 (答 CTF 应急 4 问):
-  scanner    用了什么扫描器      (UA/header/payload 三段式匹配)
-  loginpath  哪些是登录后台      (POST + longest-match + 2xx/3xx 双重过滤)
-  cred       凭证被服务端接受    (302/303 过滤 + POST body 字段别名提取)
-  webshell   上传了哪个 webshell (multipart + 代码内容解析)
-
 典型用法:
   python src/analyze.py --pcap web_attack.pcap                          # scanner (默认)
   python src/analyze.py --pcap x.pcap -m loginpath                      # 登录后台
@@ -104,8 +98,6 @@ EPILOG = """
   python src/analyze.py --pcap api.pcap -m cred --login-success-code 200  # RESTful API
   python src/analyze.py --pcap x.pcap -m webshell                       # webshell 三问
   python src/analyze.py --pcap x.pcap -m scanner --rules my.yaml        # 自定义规则
-
-详细文档见 README.md / docs/ARCHITECTURE.md
 """
 
 
