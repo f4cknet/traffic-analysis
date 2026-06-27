@@ -30,7 +30,8 @@ def _get_response_status(rec: dict, responses_by_stream: dict) -> int | None:
 
 
 def collect_credential_attempts(http_data: dict, paths_data: dict,
-                                field_aliases: dict | None = None) -> list[dict]:
+                                field_aliases: dict | None = None,
+                                success_codes: frozenset[int] | None = None) -> list[dict]:
     """
     收集所有"高度可疑登录尝试"的明细.
 
@@ -40,6 +41,7 @@ def collect_credential_attempts(http_data: dict, paths_data: dict,
     按 ts_epoch 升序 (时间线).
 
     field_aliases: 透传给 extract_credentials_from_request; 不传则用 DEFAULT.
+    success_codes: 登录成功的响应码集合; 不传则用 {302, 303}.
     """
     requests = http_data["requests"]
     responses = http_data["responses_by_stream"]
@@ -50,7 +52,7 @@ def collect_credential_attempts(http_data: dict, paths_data: dict,
         if cred is None:
             continue
         status = _get_response_status(r, responses)
-        if not is_suspicious_login_success(r, status):
+        if not is_suspicious_login_success(r, status, success_codes):
             continue
         cred["status"] = status
         cred["ts_str"] = ts_to_str(cred["ts_epoch"])

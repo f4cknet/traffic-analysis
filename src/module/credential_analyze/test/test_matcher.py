@@ -148,22 +148,30 @@ def test_extract_wp_login_get_allowed(paths_data):
     assert extract_credentials_from_request(rec, paths_data) is None
 
 
-# ============== is_suspicious_login_success ==============
+# ============== is_suspicious_login_success (默认 {302, 303}) ==============
 
-def test_suspicious_200():
+def test_suspicious_200_not_by_default():
+    """v0.4.2 修复: 默认 200 不算 (form submit 200 通常是回显登录失败页)"""
     rec = {"method": "POST"}
-    assert is_suspicious_login_success(rec, 200) is True
+    assert is_suspicious_login_success(rec, 200) is False
 
 
-def test_suspicious_302():
-    """302 是金标准登录成功"""
+def test_suspicious_302_default():
+    """302 是金标准登录成功 (默认)"""
     rec = {"method": "POST"}
     assert is_suspicious_login_success(rec, 302) is True
 
 
-def test_suspicious_303():
+def test_suspicious_303_default():
+    """303 默认也算"""
     rec = {"method": "POST"}
     assert is_suspicious_login_success(rec, 303) is True
+
+
+def test_suspicious_301_not_by_default():
+    """301 默认不算 (form submit 罕见用 301, 不算登录成功)"""
+    rec = {"method": "POST"}
+    assert is_suspicious_login_success(rec, 301) is False
 
 
 def test_suspicious_404_not():
@@ -187,3 +195,38 @@ def test_suspicious_no_status():
     """无响应状态 → 不算"""
     rec = {"method": "POST"}
     assert is_suspicious_login_success(rec, None) is False
+
+
+# ============== is_suspicious_login_success + success_codes 自定义 ==============
+
+def test_suspicious_200_explicit_success_codes():
+    """RESTful API 场景: 显式传 {200} → 200 算登录成功"""
+    rec = {"method": "POST"}
+    assert is_suspicious_login_success(rec, 200, success_codes=frozenset({200})) is True
+
+
+def test_suspicious_302_excluded_when_200_only():
+    """显式只允许 {200} → 302 不算"""
+    rec = {"method": "POST"}
+    assert is_suspicious_login_success(rec, 302, success_codes=frozenset({200})) is False
+
+
+def test_suspicious_multi_codes():
+    """多值 success_codes: {200, 201} → 两个都算"""
+    rec = {"method": "POST"}
+    codes = frozenset({200, 201})
+    assert is_suspicious_login_success(rec, 200, success_codes=codes) is True
+    assert is_suspicious_login_success(rec, 201, success_codes=codes) is True
+    assert is_suspicious_login_success(rec, 302, success_codes=codes) is False
+
+
+def test_default_login_success_codes_constant():
+    """LOGIN_SUCCESS_RESPONSE_CODES_DEFAULT = {302, 303} (v0.4.2 修正)"""
+    from src.module.credential_analyze.script import LOGIN_SUCCESS_RESPONSE_CODES_DEFAULT
+    assert LOGIN_SUCCESS_RESPONSE_CODES_DEFAULT == frozenset({302, 303})
+
+
+def test_suspicious_legacy_alias_compat():
+    """SUSPICIOUS_LOGIN_RESPONSE_CODES 旧名仍可用 (= LOGIN_SUCCESS_RESPONSE_CODES_DEFAULT)"""
+    from src.module.credential_analyze.script import SUSPICIOUS_LOGIN_RESPONSE_CODES
+    assert SUSPICIOUS_LOGIN_RESPONSE_CODES == frozenset({302, 303})

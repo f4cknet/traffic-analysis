@@ -74,7 +74,7 @@ def attack_http_data():
     requests = []
     responses = {}
 
-    # 主攻 admin/admin123 → 200
+    # 主攻 admin/admin123 → 302 (金标准登录成功)
     sid = "s1"
     rec, _ = _make_post_record(
         1700000000, "192.168.94.59",
@@ -83,7 +83,7 @@ def attack_http_data():
         stream_id=sid,
     )
     requests.append(rec)
-    responses[sid] = 200
+    responses[sid] = 302
 
     # admin/qwerty → 302 (金标准登录成功)
     sid = "s2"
@@ -96,7 +96,7 @@ def attack_http_data():
     requests.append(rec)
     responses[sid] = 302
 
-    # admin/123456 → 200
+    # admin/123456 → 302
     sid = "s3"
     rec, _ = _make_post_record(
         1700000120, "192.168.94.59",
@@ -105,9 +105,9 @@ def attack_http_data():
         stream_id=sid,
     )
     requests.append(rec)
-    responses[sid] = 200
+    responses[sid] = 302
 
-    # root/toor → 200
+    # root/toor → 302
     sid = "s4"
     rec, _ = _make_post_record(
         1700000180, "192.168.94.59",
@@ -116,7 +116,7 @@ def attack_http_data():
         stream_id=sid,
     )
     requests.append(rec)
-    responses[sid] = 200
+    responses[sid] = 302
 
     # admin/1234 → 404 (失败, 不计)
     sid = "s5"
@@ -140,7 +140,7 @@ def attack_http_data():
     requests.append(rec)
     responses[sid] = 302
 
-    # wp-login admin/admin → 200
+    # wp-login admin/admin → 302
     sid = "s7"
     rec, _ = _make_post_record(
         1700000360, "192.168.94.59",
@@ -149,9 +149,9 @@ def attack_http_data():
         stream_id=sid,
     )
     requests.append(rec)
-    responses[sid] = 200
+    responses[sid] = 302
 
-    # 伴攻 test/test123 → 200
+    # 伴攻 test/test123 → 302
     sid = "s8"
     rec, _ = _make_post_record(
         1700000420, "192.168.94.233",
@@ -160,9 +160,9 @@ def attack_http_data():
         stream_id=sid,
     )
     requests.append(rec)
-    responses[sid] = 200
+    responses[sid] = 302
 
-    # 正常用户 user1/mypass → 200
+    # 正常用户 user1/mypass → 302
     sid = "s9"
     rec, _ = _make_post_record(
         1700000500, "192.168.32.100",
@@ -171,7 +171,7 @@ def attack_http_data():
         stream_id=sid,
     )
     requests.append(rec)
-    responses[sid] = 200
+    responses[sid] = 302
 
     # GET 表单页扫描 — 不算登录尝试
     sid = "s10"

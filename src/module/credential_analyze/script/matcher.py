@@ -15,9 +15,23 @@ from src.module.login_analyze.script.matcher import match_login_path
 from .field_aliases import extract_credentials
 
 
-# 判定为"可信度高的登录尝试响应码" (双重过滤之外再加一层)
-# 302/303 是登录成功跳转到后台的金标准, 200 可能是回显登录页但仍算"高度可疑"
-SUSPICIOUS_LOGIN_RESPONSE_CODES: frozenset[int] = frozenset({200, 302, 303})
+# 登录成功的响应码 (默认集合 — 由 --login-success-code CLI 参数覆盖)
+#
+# 历史: v0.4.0 把 {200, 302, 303} 都算"高度可疑", 但 200 在 form submit 场景
+#       通常是回显登录失败页, 不是真登录成功. v0.4.2 修正默认改为 {302, 303}.
+#
+# 场景适配:
+#   - form submit:  302/303 是金标准 (登录成功跳转到后台)
+#   - RESTful API:  200 (返回 JSON {success: true}) 算登录成功
+#   - 移动端 API:   200 / 201 都常见
+#
+# 用户场景不同时, 用 --login-success-code 自由指定:
+#   python src/analyze.py --pcap x.pcap -m cred --login-success-code 302,303
+#   python src/analyze.py --pcap x.pcap -m cred --login-success-code 200
+LOGIN_SUCCESS_RESPONSE_CODES_DEFAULT: frozenset[int] = frozenset({302, 303})
+
+# 向后兼容别名 (旧代码 / 旧测试 import 这个名字的)
+SUSPICIOUS_LOGIN_RESPONSE_CODES = LOGIN_SUCCESS_RESPONSE_CODES_DEFAULT
 
 
 def parse_urlencoded_body(body_bytes: bytes, content_type: str = "") -> dict[str, str]:
@@ -113,14 +127,21 @@ def extract_credentials_from_request(rec: dict, paths_data: dict,
     }
 
 
-def is_suspicious_login_success(rec: dict, status: int | None) -> bool:
+def is_suspicious_login_success(rec: dict, status: int | None,
+                                success_codes: frozenset[int] | None = None) -> bool:
     """判定一条 (request, response.status) 是否构成"高度可疑的登录成功尝试".
 
     - 必须 POST
-    - 状态码 ∈ {200, 302, 303}
+    - 状态码 ∈ success_codes (不传则用 LOGIN_SUCCESS_RESPONSE_CODES_DEFAULT = {302, 303})
+
+    success_codes 由 CLI --login-success-code 传入; 不同时代/框架下:
+      - form submit:    {302, 303} (跳转到后台)
+      - RESTful API:    {200}      (返回 JSON success)
+      - 移动端 API:     {200, 201}
     """
     if (rec.get("method") or "").upper() != "POST":
         return False
     if status is None:
         return False
-    return status in SUSPICIOUS_LOGIN_RESPONSE_CODES
+    codes = success_codes if success_codes is not None else LOGIN_SUCCESS_RESPONSE_CODES_DEFAULT
+    return status in codes

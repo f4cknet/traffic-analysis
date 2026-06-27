@@ -30,7 +30,8 @@ from .field_aliases import (
     load_field_aliases,
 )
 from .matcher import (
-    SUSPICIOUS_LOGIN_RESPONSE_CODES,
+    LOGIN_SUCCESS_RESPONSE_CODES_DEFAULT,
+    SUSPICIOUS_LOGIN_RESPONSE_CODES,  # 向后兼容别名
     extract_credentials_from_request,
     is_suspicious_login_success,
     parse_urlencoded_body,
@@ -44,7 +45,9 @@ from src.module.login_analyze.script import load_rules
 __all__ = [
     # matcher
     "parse_urlencoded_body", "extract_credentials_from_request",
-    "is_suspicious_login_success", "SUSPICIOUS_LOGIN_RESPONSE_CODES",
+    "is_suspicious_login_success",
+    "LOGIN_SUCCESS_RESPONSE_CODES_DEFAULT",
+    "SUSPICIOUS_LOGIN_RESPONSE_CODES",  # 向后兼容别名
     # aggregator
     "collect_credential_attempts", "aggregate_by_credential",
     "build_attacker_profiles",

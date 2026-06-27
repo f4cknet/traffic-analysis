@@ -97,7 +97,7 @@ def test_aggregate_by_credential_ips(attack_http_data, paths_data):
     admin_admin123 = next(r for r in by_cred
                           if r["username"] == "admin" and r["password"] == "admin123")
     assert admin_admin123["ips"] == ["192.168.94.59"]
-    assert admin_admin123["sample_status"] == 200
+    assert admin_admin123["sample_status"] == 302  # v0.4.2: fixture 全部 302
 
 
 def test_aggregate_repeats():

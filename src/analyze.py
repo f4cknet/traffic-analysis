@@ -101,13 +101,17 @@ def main():
 示例:
   python src/analyze.py --pcap web_attack.pcap
   python src/analyze.py --pcap web_attack.pcap --module scanner-analyze
-  python src/analyze.py --pcap web_attack.pcap --rules custom.yaml
+  python src/analyze.py --pcap web_attack.pcap -m cred --login-success-code 302
+  python src/analyze.py --pcap web_attack.pcap -m cred --login-success-code 200
         """,
     )
     parser.add_argument("--pcap", required=True, type=Path, help="pcap/pcapng 文件路径")
     parser.add_argument("-m", "--module", choices=list(AVAILABLE_MODULES.keys()),
                         default="scanner", help="分析模块 (默认 scanner, 选项: scanner|loginpath|cred)")
     parser.add_argument("--rules", type=Path, default=None, help="自定义 YAML 规则库路径")
+    parser.add_argument("--login-success-code", type=str, default="302,303",
+                        help="登录成功的响应码 (逗号分隔), 仅 -m cred 生效. "
+                             "默认 302,303 (form submit 标准); RESTful API 场景用 --login-success-code 200")
     args = parser.parse_args()
 
     if not args.pcap.exists():
@@ -170,10 +174,40 @@ def main():
 
     # 3. module 业务处理
     print(f"[3/3] 分析中...", file=sys.stderr)
-    stats = mod.analyze(http_data, rules)
+
+    # 解析 --login-success-code (逗号分隔 → frozenset[int]), 仅 cred 使用
+    success_codes: frozenset[int] | None = None
+    if args.module == "cred":
+        try:
+            success_codes = frozenset(
+                int(x.strip()) for x in args.login_success_code.split(",") if x.strip()
+            )
+            if not success_codes:
+                raise ValueError("空")
+            print(f"  --login-success-code: {sorted(success_codes)}", file=sys.stderr)
+        except ValueError:
+            print(f"[错误] --login-success-code 格式错: {args.login_success_code!r} (期望逗号分隔整数, e.g. 302,303)", file=sys.stderr)
+            sys.exit(1)
+
+    # 调 module.analyze, 透传 success_codes (其他 module 忽略)
+    try:
+        if args.module == "cred":
+            stats = mod.analyze(http_data, rules, success_codes=success_codes)
+        else:
+            stats = mod.analyze(http_data, rules)
+    except TypeError as e:
+        # module.analyze 不接 success_codes (scanner/loginpath) → 回退到默认签名
+        if "success_codes" in str(e):
+            stats = mod.analyze(http_data, rules)
+        else:
+            raise
 
     # 输出 (走 stdout)
-    mod.print_summary(args.pcap, len(records), parse_stats["run_ms"], stats, rules)
+    if args.module == "cred":
+        mod.print_summary(args.pcap, len(records), parse_stats["run_ms"], stats, rules,
+                          success_codes=success_codes)
+    else:
+        mod.print_summary(args.pcap, len(records), parse_stats["run_ms"], stats, rules)
 
 
 if __name__ == "__main__":
