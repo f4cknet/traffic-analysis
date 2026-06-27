@@ -22,10 +22,12 @@ from .aggregator import (
     collect_credential_attempts,
 )
 from .field_aliases import (
+    DEFAULT_FIELDS,
     PASSWORD_FIELDS,
     USERNAME_FIELDS,
     extract_credentials,
     find_field,
+    load_field_aliases,
 )
 from .matcher import (
     SUSPICIOUS_LOGIN_RESPONSE_CODES,
@@ -47,8 +49,8 @@ __all__ = [
     "collect_credential_attempts", "aggregate_by_credential",
     "build_attacker_profiles",
     # field_aliases
-    "USERNAME_FIELDS", "PASSWORD_FIELDS",
-    "find_field", "extract_credentials",
+    "DEFAULT_FIELDS", "USERNAME_FIELDS", "PASSWORD_FIELDS",
+    "find_field", "extract_credentials", "load_field_aliases",
     # report
     "analyze", "print_summary",
     # yaml loader (复用 login-analyze)

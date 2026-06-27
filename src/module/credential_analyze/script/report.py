@@ -20,11 +20,30 @@ from .aggregator import (
     build_attacker_profiles,
     collect_credential_attempts,
 )
+from .field_aliases import load_field_aliases
 
 
-def analyze(http_data: dict, paths_data: dict) -> dict:
-    """聚合分析 — dispatcher 调用入口"""
-    attempts = collect_credential_attempts(http_data, paths_data)
+_FIELD_ALIASES_YAML_DEFAULT: str | None = None
+
+
+def _default_field_aliases_path() -> str:
+    """找模块自带的 rules/field_aliases.yaml (相对 __file__)"""
+    import os
+    here = os.path.dirname(os.path.abspath(__file__))
+    return os.path.normpath(os.path.join(here, "..", "rules", "field_aliases.yaml"))
+
+
+def analyze(http_data: dict, paths_data: dict,
+             field_aliases: dict | None = None) -> dict:
+    """
+    聚合分析 — dispatcher 调用入口.
+
+    field_aliases: 不传则自动加载模块自带的 rules/field_aliases.yaml;
+                  找不到 yaml 时用 DEFAULT_FIELDS 兜底.
+    """
+    if field_aliases is None:
+        field_aliases = load_field_aliases(_default_field_aliases_path())
+    attempts = collect_credential_attempts(http_data, paths_data, field_aliases)
     return {
         "attempts": attempts,
         "by_credential": aggregate_by_credential(attempts),
@@ -33,8 +52,18 @@ def analyze(http_data: dict, paths_data: dict) -> dict:
 
 
 def print_summary(pcap_path, records_count: int, parse_ms: float,
-                  stats: dict, rules: dict):
+                  stats: dict, rules: dict,
+                  field_aliases: dict | None = None):
     """打印高度可疑登录凭证摘要"""
+
+    # field_aliases 默认值自动加载 (与 analyze() 一致)
+    if field_aliases is None:
+        field_aliases = load_field_aliases(_default_field_aliases_path())
+
+    # 字段别名计数 (用于顶部提示)
+    user_n = len(field_aliases.get("username", []))
+    pass_n = len(field_aliases.get("password", []))
+    fa_hint = f"yaml 别名表 (username×{user_n} + password×{pass_n})"
 
     bar = "=" * 70
     print(f"\n{bar}")
@@ -42,7 +71,7 @@ def print_summary(pcap_path, records_count: int, parse_ms: float,
     print(f"{bar}")
     print(f"  HTTP 请求数: {records_count}, 解析: {parse_ms / 1000:.1f} s")
     print(f"  过滤: POST + 命中 login_paths.yaml + 响应 ∈ {{200, 302, 303}}")
-    print(f"  凭证提取: form-urlencoded body, 字段名按别名表 (user/passwd/pwd/...)")
+    print(f"  凭证提取: form-urlencoded body, 字段名按 {fa_hint}")
 
     attempts = stats["attempts"]
     by_cred = stats["by_credential"]

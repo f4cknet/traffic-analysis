@@ -1,0 +1,52 @@
+# field_aliases.yaml - 登录表单字段别名库
+#
+# 用途: 控制 credential-analyze 如何识别 POST body 里的 username/password 字段.
+#       body 是 urlencoded 格式 (key=value&key=value), 我们按字段名 (大小写不敏感)
+#       在这个表里找匹配, **第一条命中** 胜出 (yaml 顺序即优先级).
+#
+# 加新别名: 直接在对应类别下加一行. **无需改代码**.
+#
+# 设计原则:
+#   - 类别驱动: 未来加 email/token/csrf-token 等, 直接在 fields 下加新 key
+#   - yaml 顺序即优先级: 上面覆盖下面 (e.g. "username" 优先于 "user")
+#   - 默认 hardcoded: 代码里仍保留 DEFAULT_USERNAME_FIELDS / DEFAULT_PASSWORD_FIELDS,
+#     没有 yaml 时作为 fallback. 加载 yaml 后 yaml 优先.
+
+fields:
+
+  # ============== 用户名 ==============
+  # 覆盖范围: 主流 CMS / 框架 / 自定义命名
+  username:
+    - username            # 通用标准名
+    - user                # 简化名 (MVC 框架常用)
+    - user_name           # snake_case (Django/Flask 常见)
+    - name                # 部分轻量框架
+    - login               # 一些老系统
+    - email               # 用邮箱登录
+    - uname               # 简化
+    - account             # 账户体系
+    - userid
+    - user_id
+    - uid
+    - admin               # 默认管理员
+    - mobile              # 手机号登录
+    - phone
+    - tel
+    - log                 # WordPress
+    - loginname
+    - login_id
+
+  # ============== 密码 ==============
+  password:
+    - password            # 通用标准名
+    - passwd              # 简化
+    - pass                # 最简化
+    - pass_word           # snake_case (Django/Flask 常见)
+    - pwd                 # 简化
+    - passw               # 进一步简化
+    - userpass
+    - user_pass
+    - loginpass
+    - login_pass
+    - secret              # 部分 API 风格
+    - key                 # 部分老系统 (注意: 可能跟其它 key 字段冲突, 故放后面)

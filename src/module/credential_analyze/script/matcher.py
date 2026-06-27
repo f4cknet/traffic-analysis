@@ -56,7 +56,8 @@ def parse_urlencoded_body(body_bytes: bytes, content_type: str = "") -> dict[str
     return {k: v[-1] for k, v in parsed.items() if v}
 
 
-def extract_credentials_from_request(rec: dict, paths_data: dict) -> dict | None:
+def extract_credentials_from_request(rec: dict, paths_data: dict,
+                                     field_aliases: dict | None = None) -> dict | None:
     """
     从一条 request 记录里提取登录凭证 (假设是 POST + 命中登录接口).
 
@@ -66,6 +67,8 @@ def extract_credentials_from_request(rec: dict, paths_data: dict) -> dict | None
        content_type} - 提取成功
 
     注: status 需要 caller 关联 responses_by_stream 后填充. 这里只返回基础字段.
+
+    field_aliases: yaml 加载的字段别名表; 不传则用 DEFAULT_FIELDS.
     """
     # 1. 路径匹配 (复用 login-analyze)
     hits = match_login_path(rec, paths_data)
@@ -86,8 +89,8 @@ def extract_credentials_from_request(rec: dict, paths_data: dict) -> dict | None
     if not form:
         return None
 
-    # 4. 字段提取
-    username, password = extract_credentials(form)
+    # 4. 字段提取 (yaml 驱动, 不传则用 DEFAULT)
+    username, password = extract_credentials(form, field_aliases)
 
     # 5. 至少要有一个字段识别出来 (否则不算"登录凭证")
     if not username and not password:
