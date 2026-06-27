@@ -68,6 +68,41 @@
   - `test/` — pytest 单测
 - `--module login-analyze` dispatcher route
 
+### Added (credential-analyze) — v0.4.0
+- `src/module/credential_analyze/` — 第三问"高度可疑登录凭证"模块
+  - 复用 `login_paths.yaml` + longest-match matcher (跨 module 共享)
+  - **三重过滤**: POST + 命中登录接口 + 响应 ∈ {200, 302, 303}
+  - POST body 解析: application/x-www-form-urlencoded (multipart/JSON 留 v0.5.0+)
+  - **字段别名识别**: username 别名 (user/name/login/email/uname/log/...) + password 别名 (pwd/passwd/pass/password/...), 大小写不敏感
+  - 报告: 按 (path_id, username, password) 聚合 (弱密码字典爆破证据) + 攻击者画像 + 登录尝试时间线
+  - `script/{matcher,aggregator,report,field_aliases}.py`
+  - `test/` — pytest 61 个 (含 urlencoded 解析 / 字段识别 / 三重过滤 / 聚合 / 攻击者画像)
+- `--module cred` dispatcher route (`src/analyze.py -m cred`)
+- `pytest.ini` + `conftest.py` — pytest 9.x 配置 (`addopts = --import-mode=importlib` 解决多 module 同名 test 冲突)
+
+### Changed (credential-analyze) — v0.4.0
+- `src/core/pcap_parser.py` 扩展导出字段:
+  - `http.content_type` — 区分 form-urlencoded / multipart / json
+  - `http.file_data` — POST body 字节 (hex 编码)
+  - request records 新增字段: `content_type` + `post_body_bytes`
+- `src/core/utils.py` 新增 helper:
+  - `hex_to_bytes(hex_str)` — tshark hex 字符串 → bytes
+  - `decode_body_str(body_bytes, encoding_hint)` — bytes → str (UTF-8 / latin-1 fallback, 支持 Content-Type charset)
+- `src/core/__init__.py` 导出新 helper
+- `requirements.txt` 删 scapy 死依赖 (v0.2.0+ 已删 scapy 后端, CHANGELOG 早写了)
+
+### 端到端 web_attack.pcap 验证 (v0.4.0)
+- **2807 条高度可疑登录尝试** (v0.3.0 是 2822 总 POST, 过响应码过滤 {200, 302, 303} 后)
+- **790 组独立凭证** (789 来自 192.168.94.59, 1 来自 192.168.94.233)
+- **关键发现**:
+  - 主攻 `192.168.94.59`: 2804 次尝试, 789 组不同凭证
+  - 伴攻 `192.168.94.233`: 单一密码 `hr123456` (3 次)
+  - 高频弱密码字典: `g00dPa$$w0rD` (327 次), `123` / `123456` / `1234567` / `12345678` / `123456789` / `admin` / `admin123` / `changeme` / `princess` / `abc123` 等 (各 14-16 次)
+  - 测试账号: `sample@email.tst` (260 次, 单一账号爆破)
+- **关键洞察**: username 字段里**多数是 AWVS SQL 注入 payload** (e.g. `!(()&&!|*|*|,"+response.write(...)+",";print(md5(acunetix_wvs_security_test));$a=...`) — 反映攻击者主要做扫描器探测而非真实登录
+- **无 302 真登录成功**: 所有高度可疑尝试响应都是 200 (服务端回显登录失败页), 说明攻击者**没破解任何账号** (这也是 v0.4.0 的核心答案)
+- **运行命令**: `python src/analyze.py --pcap examples/web_attack.pcap -m cred`
+
 ### 历史 Unreleased 改动 (本次重构前)
 
 > 以下是重构前已 push 但还没发布的改动, 重构后全部并入新结构.
