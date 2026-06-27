@@ -5,18 +5,34 @@
 ## [Unreleased]
 
 ### Added
-- `docs/principles.md` — 项目铁律，第一条「Python package 优先于外部 CLI 工具」（scapy > tshark，PyYAML > yq，cryptography > ssh-keygen，dnspython > dig）
-- `docs/ARCHITECTURE.md` §3 模块划分扩展：`mvp_v3.py` 的 CLI 接口 + scapy 解析流程 + frame 级 vs TCP 重组取舍
-- `docs/REQUIREMENTS.md` §3.4 依赖管理节，明确 `requirements.txt` 锁版本
-- `docs/ROADMAP.md` v0.2.0 重新定义为首模块「扫描器识别」（scapy 主分析器 + scanners.yaml）
+- `tools/src/extend-tools/tshark/` — 瘦身后的 tshark 4.6.6 二进制子集 (110MB / 50 文件)，从完整 Wireshark 安装包 (280MB / 1342 文件) 砍掉 GUI / 其他工具 / 协议模块 / codec 杂项
+- `tools/tests/` — pytest 单测，48 个测试覆盖 YAML 加载 / 三段式匹配 / 全量聚合 / Markdown 渲染，0.09s 跑完
+  - `conftest.py` — 共享 fixture
+  - `test_load_rules.py` — YAML 加载 + 字段完整 + nessus 在内
+  - `test_match_scanner.py` — 三段式触发 + weight 累加 + 边界
+  - `test_analyze.py` — 全量聚合 + 攻击者评分 + URI 攻击类型分类
+  - `test_render.py` — Markdown 输出文件 + 关键字段齐全
+- `tools/requirements-dev.txt` — 开发依赖（pytest）
+- `tools/tests/_README.md` — 单测说明
 
 ### Changed
-- `docs/ARCHITECTURE.md` §4.1 从「默认 scapy + tshark 降级」改为「完全用 scapy」，v0.2.0 不引入 tshark 降级路径
-- `docs/REQUIREMENTS.md` §3.3 兼容性需求去掉 tshark 依赖，§3.1 功能需求按模块拆分 v0.2.0 / v0.3.0+ 边界
-- `docs/ROADMAP.md` 迭代总览更新（v0.1.0 → ✅ 已发布，v0.2.0 → 🚧 进行中）
+- **BREAKING**: 主分析器从 `mvp_v3.py` 改名为 `analyze.py`；tshark 默认，scapy 作 `--backend scapy` fallback（不再每个后端开一个文件）
+- `tools/src/` 新增 `analyzer_core.py` — 共享分析逻辑（load_rules / analyze / render_md / match_scanner），不再每个后端重复实现
+- `tools/src/extend-tools/tshark/` 取代根目录 `extend-tools/wireshark/`（已删除）
+- `tools/requirements.txt` 拆分：scapy 改为可选依赖（`--backend scapy` 才需要），tshark 后端仅需 PyYAML
+- `docs/ARCHITECTURE.md` §3 模块划分重写（analyze / analyzer_core / extend-tools / tests / requirements 五段）
+- `docs/ARCHITECTURE.md` §4.1 翻转：tshark 默认 + scapy fallback（实测 12× 性能差距）
+- `docs/ARCHITECTURE.md` §5 性能表更新（tshark 9s vs scapy 110s）
+- `docs/principles.md` §1.4.1 新增已触发的例外条款记录（tshark 后端的性能证据）
+
+### Removed
+- `tools/src/mvp_v3.py` — 改名为 `analyze.py`
+- `tools/src/mvp_v3_tshark.py` — 合并到 `analyze.py` 内部（dict 路由）
+- `tools/src/bench.py` — 一次性脚本，移到 `tools/_debug/bench.py`
+- 根目录 `extend-tools/wireshark/` — 移到 `tools/src/extend-tools/tshark/` 并瘦身
 
 ### 设计决策（更新）
-- ~~tshark + Python~~ → **完全 scapy**，无 tshark 降级（见 [docs/principles.md](principles.md) §1）
+- ~~完全 scapy，no tshark 降级~~ → **tshark 默认 + scapy fallback**（实测性能 12× 差距触发 principles.md §1.4 例外条款）
 
 ## [0.1.0] - 2026-06-27
 

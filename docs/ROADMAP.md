@@ -40,24 +40,29 @@
 **目标**：用 scapy 搭建流量分析工具框架，落地第一个功能模块 —— **通过 HTTP header / UA 识别攻击者使用的扫描器**。
 
 **设计原则**：
-- 遵循 [docs/principles.md](principles.md) §1：scapy 替代 tshark，Python package 优先
+- 触发 [docs/principles.md](principles.md) §1.4 例外条款：**tshark 默认 + scapy fallback**（实测性能 12× 差距）
 - 框架可扩展：后续 webshell / 攻击链模块都基于这套框架叠加
 - 规则数据驱动：scanners.yaml 加一行就能识别新扫描器
+- 测试覆盖：`tools/tests/` pytest 单测，纯 dict fixture，0.1s 跑完
 
 **交付**：
-- [ ] `tools/src/mvp_v3.py` — scapy 主分析器（frame 级 HTTP 解析 + 三段式匹配 + Markdown 报告）
-- [ ] `tools/rules/scanners.yaml` — 扫描器规则库（搬旧 + 扩 nessus）
-- [ ] `tools/requirements.txt` — 依赖锁定（scapy / PyYAML）
-- [ ] `tools/generate_ssh_key.py` — 已存在的 dev 工具，迁入
+- [x] `tools/src/analyze.py` — 主分析器（tshark 默认 + scapy `--backend` 切换）
+- [x] `tools/src/analyzer_core.py` — 共享分析逻辑（load_rules / analyze / render_md / match_scanner）
+- [x] `tools/rules/scanners.yaml` — 30 条扫描器规则（搬旧 + 扩 nessus）
+- [x] `tools/src/extend-tools/tshark/` — 瘦身后的 tshark 4.6.6 (110MB / 50 文件)
+- [x] `tools/requirements.txt` — 运行时依赖（PyYAML + 可选 scapy）
+- [x] `tools/requirements-dev.txt` — 开发依赖（pytest）
+- [x] `tools/tests/` — 48 个 pytest 单测，0.09s 跑完
+- [x] `tools/generate_ssh_key.py` — dev 工具，迁入
 - [ ] `examples/web_attack.md` — 真实题目题解（writeup）
-- [ ] `examples/web_attack_report.md` — MVP 跑出的样例报告
+- [ ] `examples/web_attack_report.md` — analyze.py 跑出的样例报告
 
 **验收标准**：
-- `pip install -r tools/requirements.txt` 一条命令搞定依赖
-- `python tools/src/mvp_v3.py --pcap <path>` 跑 web_attack.pcap 出 Markdown 报告
-- 攻击者 IP `192.168.94.59`、扫描器 AWVS + sqlmap、时间线全部正确
-- YAML 加新规则能立即生效（无需改 Python 代码）
-- 跨平台：Windows / Linux / macOS 同一份代码可跑
+- ✅ `python tools/src/analyze.py --pcap <path>` 跑 web_attack.pcap 出 Markdown 报告
+- ✅ 攻击者 IP `192.168.94.59`（71217 请求）、扫描器 AWVS (header 命中 352) + sqlmap (UA 命中 6)、XFF 注入 20952、WebDAV 3 — 全部正确（与已验证结论完全吻合）
+- ✅ YAML 加新规则能立即生效（无需改 Python 代码）
+- ✅ `pytest tools/tests/` 48 passed in 0.09s
+- ⚠ 跨平台：当前 tshark 子集仅 Windows x64；Linux/macOS 需从对应平台安装包按同样策略瘦身
 
 ---
 

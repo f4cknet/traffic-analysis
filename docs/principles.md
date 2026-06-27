@@ -42,6 +42,24 @@
 2. **性能差距 ≥ 10×** 且场景对延迟/吞吐敏感（且评估文档里写清楚为什么）
 3. **临时调试**：一次性脚本，用完即弃，并打 `# TODO(replace): <用 X 包替代>` 标记
 
+### 1.4.1 已触发的例外
+
+**tshark 后端**（v0.2.0）— 触发条件 §1.4 (2)「性能差距 ≥ 10×」：
+
+- **Python 候选**：scapy
+- **外部 CLI 候选**：tshark (Wireshark)
+- **性能对比**（web_attack.pcap 174MB）：
+
+| 后端 | parse 耗时 | 内存峰值 | 部署体积 |
+|---|---:|---:|---:|
+| scapy | ~110 s | ~6 GB | pip install (~10MB) |
+| tshark | **~9 s** | **~150 MB** | extend-tools (110MB) |
+
+- **差距**：12× 速度 + 40× 内存
+- **决策**：tshark 默认，scapy 作 `--backend scapy` fallback
+- **可移植性补救**：scapy 在小 pcap (< 10MB) 和 CI/单测场景下仍是首选
+- **ARCHITECTURE §4.1** 详细描述触发逻辑（按 pcap 体积分流）
+
 ### 1.5 退到外部 CLI 时的硬性要求
 
 如果确实要调外部 CLI，**必须**满足：

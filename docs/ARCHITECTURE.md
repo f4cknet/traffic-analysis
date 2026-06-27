@@ -74,45 +74,33 @@ report_v3_<timestamp>.md
 
 ## 3. 模块划分
 
-### 3.1 `tools/src/mvp_v3.py`（v0.2.0 主分析器）
+### 3.1 `tools/src/analyze.py`（v0.2.0 主分析器）
 
 主分析器。负责 pcap → 扫描器识别全流程。
 
 **CLI 接口**：
 
 ```bash
-python tools/src/mvp_v3.py \
-    --pcap <path/to/file.pcap> \
-    --rules tools/rules/scanners.yaml \
-    --out report_<timestamp>.md
+python tools/src/analyze.py --pcap <file.pcap>
+python tools/src/analyze.py --pcap <file.pcap> --backend scapy   # 显式切 scapy
+python tools/src/analyze.py --pcap <file.pcap> --backend auto    # tshark 优先, 降级 scapy
 ```
 
 参数：
 - `--pcap`（必填）：pcap/pcapng 文件路径
 - `--rules`（默认 `tools/rules/scanners.yaml`）：YAML 规则库
-- `--out`（默认 `out/report_v3_<timestamp>.md`）：Markdown 报告输出路径
+- `--out`（默认 `out/report_<backend>_<timestamp>.md`）：Markdown 报告输出路径
+- `--backend`（默认 `tshark`）：`tshark` / `scapy` / `auto`
+- `--tshark`（可选）：显式指定 tshark.exe 路径
 
 **核心流程**：
 
 ```
 pcap
-  │ scapy.rdpcap
-  ▼
-pkts (frame list)
-  │ filter haslayer(HTTPRequest)
-  ▼
-HTTP requests list
-  │ 对每个请求提取:
-  │   - 已知字段 (Method, Path, Host, User-Agent)
-  │   - 自定义 header 列表 (req.Headers)
-  │   - 时间戳 (pkt.time)
-  │   - 源 IP (pkt[IP].src)
+  │ [backend: tshark | scapy] -> records
   ▼
 records (list[dict])
-  │ match_scanner (三段式正则匹配)
-  ▼
-hits by scanner × segment
-  │ aggregate by IP × scanner
+  │ analyze (三段式 + 聚合 + 评分)
   ▼
 stats dict
   │ render_md
@@ -120,25 +108,25 @@ stats dict
 report.md
 ```
 
-**关键实现**：
+**后端选择**（默认 tshark）：
+- **tshark**：libpcap 原生 C 解析，~9 秒/174MB pcap，性能优先
+- **scapy**：纯 Python 包解析，~110 秒/174MB pcap，便携优先
+- **auto**：tshark 可用就用 tshark，否则降级 scapy
 
-- pcap 读取：`scapy.all.rdpcap(path)` 一次性加载
-- HTTP 过滤：`pkts.filter(lambda p: p.haslayer(HTTPRequest))`
-- 标准字段：`req.Method`, `req.Path`, `req.Host`, `req.User_Agent`
-- 自定义 header：`req.Headers` 列表（每个元素是 `(name_bytes, value_bytes)` pair）
-- 源 IP：`pkt[IP].src`（v4）/ `pkt[IPv6].src`（v6）
-- 时间：`pkt.time`（epoch float）→ `datetime.fromtimestamp`
+切换后端不需要改代码逻辑 — 两实现都返回相同结构的 records list。
 
-**Frame 级 vs TCP 重组**：
+### 3.2 `tools/src/analyzer_core.py`
 
-v0.2.0 用 frame 级解析（不开 TCPSession），原因：
-- 大多数扫描器 HTTP request header 单个 TCP segment 装得下（< 8KB）
-- 170MB pcap 一次性 TCPSession 重组会内存爆炸
-- frame 级 99% 覆盖，应急分析题够用
-- 漏掉的跨 segment 请求在 v0.3.0 评估是否加 TCPSession 模式
+共享分析逻辑（不依赖 pcap 解析后端）：
+- `load_rules(path)`：YAML 加载 + 预编译正则
+- `match_scanner(rec, rules)`：单条记录三段式匹配
+- `analyze(records, rules)`：全量聚合 + 攻击者评分
+- `render_md(stats, rules, pcap, out)`：Markdown 报告渲染
+- 攻击类型分类 + 浏览器 UA 判断工具
 
-### 3.2 `tools/rules/scanners.yaml`
-规则库。每条规则结构：
+### 3.3 `tools/rules/scanners.yaml`
+
+规则库（30 条）。每条规则结构：
 
 ```yaml
 - id: acunetix_wvs
@@ -165,33 +153,76 @@ v0.2.0 用 frame 级解析（不开 TCPSession），原因：
 - `match.payload_keywords`：字面量匹配 URI / 请求 body（弱辅证）
 - `weight.ua / header / payload`：各段命中加分（默认 10/10/1）
 
-### 3.3 `tools/requirements.txt`
-依赖清单（pip 安装）：
+### 3.4 `tools/src/extend-tools/tshark/`
 
+瘦身后的 tshark 4.6.6 二进制子集（110MB / 50 文件），从完整 Wireshark 安装包 (280MB / 1342 文件) 砍掉 GUI / 其他工具 / 协议模块 / codec 杂项而来。
+
+包含：
+- `tshark.exe` 主程序
+- `libwireshark.dll` (90MB) + `libwiretap.dll` + `libwsutil.dll` 核心三件套
+- GLib / TLS / 字符编码 / 压缩库等系统依赖
+
+仅 Windows x64。要在 Linux / macOS 上跑，需要按同样策略从对应平台安装包瘦身。
+
+`analyze.py` 默认从 `tools/src/extend-tools/tshark/tshark.exe` 找 tshark。
+
+### 3.5 `tools/tests/`
+
+pytest 单测。覆盖：
+- `test_load_rules.py` — YAML 加载 + 字段完整 + nessus 在内
+- `test_match_scanner.py` — 三段式触发 + weight 累加 + 边界情况
+- `test_analyze.py` — 全量聚合 + 攻击者评分 + URI 攻击类型分类
+- `test_render.py` — Markdown 输出文件 + 关键字段齐全
+
+跑测试：`pip install -r tools/requirements-dev.txt && python -m pytest tools/tests/`
+
+### 3.6 `tools/requirements.txt` / `requirements-dev.txt`
+
+依赖清单：
 ```
-scapy>=2.5.0          # pcap 解析 + HTTP 层
-PyYAML>=6.0           # 规则库加载
+# requirements.txt (运行时)
+PyYAML>=6.0                # 规则库加载 (tshark 后端)
+scapy>=2.5.0               # scapy 后端 (可选, --backend scapy 才需要)
+
+# requirements-dev.txt (开发时, 含 pytest)
+pytest>=7.0
 ```
 
-### 3.4 `tools/generate_ssh_key.py`
+**注意**：tshark 后端不依赖 scapy。用户只用 tshark 就不需要装 scapy，可移植性更好。
+
+### 3.7 `tools/generate_ssh_key.py`
 开发辅助工具。生成 ed25519 SSH key（绕过 PowerShell 引号坑）。
 
 ## 4. 关键设计决策
 
-### 4.1 pcap 解析：scapy（不引入 tshark）
+### 4.1 pcap 解析：tshark 默认，scapy fallback
 
-> 本决策遵循 [docs/principles.md](principles.md) §1「Python package 优先于外部 CLI」。
+> 本决策触发 [docs/principles.md](principles.md) §1.4 例外条款（性能差距 ≥ 10×）。
 
-v0.2.0 **完全用 scapy**，不引入 tshark 降级路径：
-- **可移植性**：`pip install scapy` 跨 Windows / Linux / macOS 一致，无需装 Wireshark
-- **单语言栈**：所有逻辑在 Python 内部，错误处理、异常捕获统一
-- **依赖锁定**：`requirements.txt` 锁版本，行为可重现；tshark 版本由系统决定，可能漂移
-- **协议准确性**：scapy 的 `HTTPRequest` 层对标准 + 自定义 header 都能识别（自定义进 `Headers` 列表），应急题够用
-- **性能**：scapy frame 级解析在 170MB pcap 上预估 30-60s 可接受
+**实测性能对比**（web_attack.pcap 174MB / 73万帧 / 71340 HTTP 请求）：
 
-**未来评估**：如果 v0.3.0+ 出现跨 segment 的 HTTP request 漏检问题，再考虑：
-1. 加 `TCPSession` 模式（内存换准确性）
-2. 极端情况 fallback 到 tshark（违反铁律 §1，需新写例外条款）
+| 后端 | parse_pcap 耗时 | 内存峰值 | 部署体积 |
+|---|---:|---:|---:|
+| tshark | **~9 秒** | ~150MB | 110MB |
+| scapy | ~110 秒 | ~6GB | `pip install scapy` 几 MB |
+
+scapy 慢 **12 倍**且吃 6GB 内存 — 应急分析场景下不可接受。
+
+**默认选 tshark 的理由**：
+- **性能 12×**：libpcap 原生 C 解析 vs Python 逐帧 dissect
+- **内存友好**：独立子进程，常驻 150MB
+- **协议覆盖**：Wireshark 是行业标准，覆盖率高于 scapy 自定义解析
+- **部署可控**：extend-tools/tshark/ 锁版本，行为可重现
+
+**保留 scapy 作为 fallback**：
+- 便携场景（无 extend-tools 时）：`--backend scapy` 切纯 Python 解析
+- pcap < 50MB 时 scapy 也够用，不必为小文件启动外部进程
+- 单测、CI：scapy 路径便于 mock 测试
+
+**触发原则**（按 principles.md §1.4 修订）：
+- pcap > 50MB → 默认 tshark（性能优先）
+- pcap < 50MB → 可选 scapy（便携优先）
+- tshark 不可用 → 自动降级 scapy（`--backend auto`）
 
 ### 4.2 为什么用 YAML 规则库
 - 人类可读，加新扫描器无需改代码
@@ -210,15 +241,35 @@ v0.2.0 **完全用 scapy**，不引入 tshark 降级路径：
 
 ## 5. 性能特征
 
-基于 web_attack.pcap (174MB, 73万帧, 7万 HTTP 请求) 实测：
+基于 web_attack.pcap (174MB, 73万帧, 71340 HTTP 请求) 实测：
+
+### 5.1 tshark 后端（默认）
 
 | 阶段 | 耗时 | 备注 |
 |---|---|---|
-| tshark 导出 7 字段 | 8.5s | 单次调用 |
-| CSV 解析 + header 拆分 | 3s | Python 主导 |
-| 规则匹配 + 计分 | < 1s | 内存计算 |
-| Markdown 渲染 | < 1s | 文本生成 |
-| **总计** | **~12s** | 单次跑完 |
+| tshark 导出 8 字段 | ~9 s | 单次子进程调用 |
+| records 构造 (header 拆分) | ~2 s | Python 主导 |
+| 规则匹配 + 计分 | < 1 s | 内存计算 |
+| Markdown 渲染 | < 1 s | 文本生成 |
+| **总计** | **~12 s** | 单次跑完 |
+
+### 5.2 scapy 后端（fallback）
+
+| 阶段 | 耗时 | 备注 |
+|---|---|---|
+| scapy rdpcap (174MB) | ~103 s | 一次性加载所有帧到内存 |
+| HTTPRequest 过滤 + 字段提取 | ~5 s | frame 级遍历 |
+| 规则匹配 + 计分 | < 1 s | 内存计算 |
+| Markdown 渲染 | < 1 s | 文本生成 |
+| **总计** | **~110 s** | 比 tshark 慢 9-12 倍 |
+
+### 5.3 对比结论
+
+- **大 pcap (> 50MB) 用 tshark**：性能 12× 优势，内存峰值差 40× (150MB vs 6GB)
+- **小 pcap (< 10MB) 用 scapy 也可**：几秒完成，省去启动 tshark 子进程开销
+- **单测/CI 用 scapy**：无需在测试环境部署 tshark 二进制
+
+更详细的可执行对比见 `tools/_debug/bench.py`（一次性脚本，不入主分支）。
 
 ## 6. 扩展点
 
