@@ -11,9 +11,9 @@
 
 ## 核心特性
 
-- 🚀 **协议层精准识别**：用 tshark 按 `http.user_agent` 和自定义 header 字段过滤，**不靠 `strings + grep`**（后者无法区分字段）
-- 📋 **三段式证据等级**：UA 字段 (强) / 自定义 header (强) / URI payload (弱辅证)
-- 🔌 **规则可扩展**：YAML 规则库，加一行就能识别新扫描器
+- 🚀 **协议层精准识别**：按协议层字段（UA / 自定义 header / payload）分类匹配，避免字符串搜索的字段歧义
+- 📋 **三段式证据等级**：UA 字段（强）/ 自定义 header（强）/ URI payload（弱辅证）
+- 🔌 **规则可扩展**：规则独立于代码，加一条规则即可识别新扫描器，无需改主程序
 - 📊 **自动报告**：Markdown 格式，含攻击时间线、payload 样例、关键证据
 
 ## 快速开始
@@ -26,8 +26,7 @@ cd traffic-analysis
 # 2. 准备 pcap 文件
 #    (pcap 文件不入仓库, 单独放在本地)
 
-# 3. 跑分析 (待 v0.2.0 工具迁移完成)
-python tools\src\mvp_v3.py
+# 3. 按 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) §3 的指引运行主分析器 (待 v0.2.0 迁移完成)
 ```
 
 ## 文档导航
@@ -39,37 +38,18 @@ python tools\src\mvp_v3.py
 | [docs/ROADMAP.md](docs/ROADMAP.md) | 迭代计划，每个版本交付什么 |
 | [docs/CHANGELOG.md](docs/CHANGELOG.md) | 版本变更记录 |
 | [docs/evidence-rules.md](docs/evidence-rules.md) | 扫描器判据等级详解（强/中/弱） |
-
-## 工具结构（v0.2.0 起）
-
-```
-traffic-analysis/
-├── README.md
-├── docs/                  # 文档优先
-│   ├── REQUIREMENTS.md
-│   ├── ARCHITECTURE.md
-│   ├── ROADMAP.md
-│   ├── CHANGELOG.md
-│   └── evidence-rules.md
-├── tools/
-│   ├── generate_ssh_key.py  # SSH key 生成 (dev 工具)
-│   ├── src/                 # 核心分析脚本
-│   └── rules/               # 扫描器 YAML 规则
-├── examples/              # 题目样例 + 题解
-└── .gitignore             # 排除 pcap/log/debug
-```
+| [docs/principles.md](docs/principles.md) | 项目铁律（工具选型、跨平台、依赖管理） |
 
 ## 当前状态
 
 **v0.1.0** - 项目骨架（仅文档）
 
-下一次迭代 v0.2.0 将迁移 MVP v3 工具。
+下一次迭代 v0.2.0 将迁移主分析器。
 
-## 已知关键洞察
+## 关键洞察
 
-1. **`strings + grep` 不能用于识别扫描器**——它无法区分关键字在 UA 头、URI 还是响应 body
-2. **自定义 header 是金标准**——`Acunetix-Aspect: enabled` 这类字段是扫描器自报家门
+1. **协议层匹配是基础**——不区分 UA 头 / URI / body 的字符串搜索无法可靠识别扫描器
+2. **自定义 header 是金标准**——如 `Acunetix-Aspect: enabled` 这种字段是扫描器自报家门
 3. **URI 中的工具名是辅证而非判定依据**——攻击 payload 含工具名不等于 UA 是该工具
-4. **tshark 走协议层**才能区分字段，比 strings 精准 15-20 倍
 
 详细判据见 [docs/evidence-rules.md](docs/evidence-rules.md)。

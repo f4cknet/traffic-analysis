@@ -4,6 +4,20 @@
 
 ## [Unreleased]
 
+### Added
+- `docs/principles.md` — 项目铁律，第一条「Python package 优先于外部 CLI 工具」（scapy > tshark，PyYAML > yq，cryptography > ssh-keygen，dnspython > dig）
+
+### Changed
+- `docs/ARCHITECTURE.md` §4.1 从「为什么用 tshark 而不是 scapy」改为「默认 scapy，tshark 作降级」，遵循新铁律 §1
+- `README.md` 关键洞察 #1 去掉 `strings + grep` 字眼，保留「协议层匹配」核心观点
+- `README.md` 关键洞察 #4 删除（整条是讲 scapy vs strings 的组件描述，与新铁律冲突）
+- `README.md` 核心特性去掉 `tshark` 字眼
+- `README.md` 删除「工具结构（v0.2.0 起）」整段（列出 src/ rules/ generate_ssh_key.py 等内部组件）
+- `README.md` 文档导航表新增 `principles.md` 入口
+
+### 设计决策（更新）
+- ~~tshark + Python~~ → **scapy + Python，tshark 降级**（见 [docs/principles.md](principles.md) §1）
+
 ## [0.1.0] - 2026-06-27
 
 ### Added

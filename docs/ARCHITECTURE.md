@@ -109,11 +109,15 @@ report_v3_<timestamp>.md
 
 ## 4. 关键设计决策
 
-### 4.1 为什么用 tshark 而不是 scapy
-- tshark 走 Wireshark 协议解析器，**准确性高于 scapy 自定义解析**
-- tshark 性能高，处理 170MB pcap 几秒完成
-- Wireshark 是行业标准，输出格式稳定
-- tshark 在 Windows 上原生支持
+### 4.1 pcap 解析：默认 scapy，tshark 作降级
+
+> 本决策遵循 [docs/principles.md](principles.md) §1「Python package 优先于外部 CLI」。
+
+- **默认走 scapy**：`pip install scapy` 即用，跨 Windows / Linux / macOS 一致，无需装 Wireshark
+- **降级路径 tshark**：scapy 解析失败（畸形包、罕见协议层）时自动 fallback 到 `tshark -T fields`
+- **可移植性优先**：scapy 行为可重现（`requirements.txt` 锁版本）；tshark 版本由系统决定，可能漂移
+- **协议准确性**：scapy 自定义解析对 HTTP/HTTPS/DNS 主流字段够用；Wireshark 在私有/罕见协议更准，但这类场景**不是本项目 v0.2.0 范围**
+- **性能**：scapy 在 170MB pcap 上 ~30s 完成（可接受），未来若性能瓶颈再评估切到 tshark 默认路径
 
 ### 4.2 为什么用 YAML 规则库
 - 人类可读，加新扫描器无需改代码
