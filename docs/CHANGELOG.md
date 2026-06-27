@@ -91,16 +91,27 @@
 - `src/core/__init__.py` 导出新 helper
 - `requirements.txt` 删 scapy 死依赖 (v0.2.0+ 已删 scapy 后端, CHANGELOG 早写了)
 
-### 端到端 web_attack.pcap 验证 (v0.4.0)
-- **2807 条高度可疑登录尝试** (v0.3.0 是 2822 总 POST, 过响应码过滤 {200, 302, 303} 后)
-- **790 组独立凭证** (789 来自 192.168.94.59, 1 来自 192.168.94.233)
-- **关键发现**:
-  - 主攻 `192.168.94.59`: 2804 次尝试, 789 组不同凭证
-  - 伴攻 `192.168.94.233`: 单一密码 `hr123456` (3 次)
-  - 高频弱密码字典: `g00dPa$$w0rD` (327 次), `123` / `123456` / `1234567` / `12345678` / `123456789` / `admin` / `admin123` / `changeme` / `princess` / `abc123` 等 (各 14-16 次)
-  - 测试账号: `sample@email.tst` (260 次, 单一账号爆破)
-- **关键洞察**: username 字段里**多数是 AWVS SQL 注入 payload** (e.g. `!(()&&!|*|*|,"+response.write(...)+",";print(md5(acunetix_wvs_security_test));$a=...`) — 反映攻击者主要做扫描器探测而非真实登录
-- **无 302 真登录成功**: 所有高度可疑尝试响应都是 200 (服务端回显登录失败页), 说明攻击者**没破解任何账号** (这也是 v0.4.0 的核心答案)
+### Added (credential-analyze) — v0.4.1 字段别名 yaml 化
+- `src/module/credential_analyze/rules/field_aliases.yaml` — **字段别名库驱动**:
+  - 加新别名直接改 yaml, **无需改 Python 代码** (与 scanners.yaml / login_paths.yaml 同套路)
+  - username 类 (18 个): `username / user / user_name / name / login / email / uname / account / userid / user_id / uid / admin / mobile / phone / tel / log / loginname / login_id`
+  - password 类 (12 个): `password / passwd / pass / pass_word / pwd / passw / userpass / user_pass / loginpass / login_pass / secret / key`
+  - yaml 顺序即优先级, 第一条命中胜出
+  - 未来扩展 (e.g. `email / csrf_token / token` 等): 在 yaml 里加新类别键即可
+- `field_aliases.py` 重构:
+  - `load_field_aliases(path=None)` — 从 yaml 加载; path=None 或文件不存在时返回 DEFAULT 拷贝
+  - `DEFAULT_FIELDS` — 兜底硬编码 (与 yaml 默认值保持一致, 含 user_name / pass_word snake_case 支持)
+  - `find_field(form, category, field_aliases=None)` — 接受 yaml 字段别名表, 不传则用 DEFAULT
+  - `USERNAME_FIELDS` / `PASSWORD_FIELDS` tuple 保留 (旧 API 兼容)
+- 端到端测试更新: web_attack.pcap 报告头显示 `字段名按 yaml 别名表 (username×18 + password×12)`
+
+### 端到端 web_attack.pcap 验证 (v0.4.1)
+- **2815 条高度可疑登录尝试** (vs v0.4.0 hardcoded 的 2807 条, +8 条因 user_name/pass_word 覆盖新增)
+- **2256 组独立凭证** (vs v0.4.0 的 790 组, **×2.86 倍**)
+- **关键发现 (v0.4.1 更精确的攻击者画像)**:
+  - 攻击者做了**账号枚举 + 密码字典爆破**: top 账号是 8 字符随机字符串 (`bktihthm`, `vahuxfwr`, `pmsgacvf`, `vojqbivv`, `fgwyslwc` 等) — 看起来是攻击者动态生成的字典账号
+  - 高频密码仍以 `g00dPa$$w0rD` 为主 (top 组合 top1-4 都是这密码)
+  - 这覆盖了 v0.4.0 没识别的请求 (之前因字段名不在 hardcoded 列表里被过滤)
 - **运行命令**: `python src/analyze.py --pcap examples/web_attack.pcap -m cred`
 
 ### 历史 Unreleased 改动 (本次重构前)
