@@ -74,13 +74,68 @@ report_v3_<timestamp>.md
 
 ## 3. 模块划分
 
-### 3.1 `tools/src/mvp_v3.py`（v0.2.0 迁移）
-主分析器。负责：
-- 调用 tshark 子进程
-- 解析 http.request.line 拆出所有 header
-- 三段式匹配（UA / header / payload）
-- 计分 + 攻击者排序
-- 输出 Markdown 报告
+### 3.1 `tools/src/mvp_v3.py`（v0.2.0 主分析器）
+
+主分析器。负责 pcap → 扫描器识别全流程。
+
+**CLI 接口**：
+
+```bash
+python tools/src/mvp_v3.py \
+    --pcap <path/to/file.pcap> \
+    --rules tools/rules/scanners.yaml \
+    --out report_<timestamp>.md
+```
+
+参数：
+- `--pcap`（必填）：pcap/pcapng 文件路径
+- `--rules`（默认 `tools/rules/scanners.yaml`）：YAML 规则库
+- `--out`（默认 `out/report_v3_<timestamp>.md`）：Markdown 报告输出路径
+
+**核心流程**：
+
+```
+pcap
+  │ scapy.rdpcap
+  ▼
+pkts (frame list)
+  │ filter haslayer(HTTPRequest)
+  ▼
+HTTP requests list
+  │ 对每个请求提取:
+  │   - 已知字段 (Method, Path, Host, User-Agent)
+  │   - 自定义 header 列表 (req.Headers)
+  │   - 时间戳 (pkt.time)
+  │   - 源 IP (pkt[IP].src)
+  ▼
+records (list[dict])
+  │ match_scanner (三段式正则匹配)
+  ▼
+hits by scanner × segment
+  │ aggregate by IP × scanner
+  ▼
+stats dict
+  │ render_md
+  ▼
+report.md
+```
+
+**关键实现**：
+
+- pcap 读取：`scapy.all.rdpcap(path)` 一次性加载
+- HTTP 过滤：`pkts.filter(lambda p: p.haslayer(HTTPRequest))`
+- 标准字段：`req.Method`, `req.Path`, `req.Host`, `req.User_Agent`
+- 自定义 header：`req.Headers` 列表（每个元素是 `(name_bytes, value_bytes)` pair）
+- 源 IP：`pkt[IP].src`（v4）/ `pkt[IPv6].src`（v6）
+- 时间：`pkt.time`（epoch float）→ `datetime.fromtimestamp`
+
+**Frame 级 vs TCP 重组**：
+
+v0.2.0 用 frame 级解析（不开 TCPSession），原因：
+- 大多数扫描器 HTTP request header 单个 TCP segment 装得下（< 8KB）
+- 170MB pcap 一次性 TCPSession 重组会内存爆炸
+- frame 级 99% 覆盖，应急分析题够用
+- 漏掉的跨 segment 请求在 v0.3.0 评估是否加 TCPSession 模式
 
 ### 3.2 `tools/rules/scanners.yaml`
 规则库。每条规则结构：
@@ -104,20 +159,39 @@ report_v3_<timestamp>.md
     payload: 1
 ```
 
-### 3.3 `tools/generate_ssh_key.py`
+匹配字段说明：
+- `match.ua`：正则匹配 User-Agent 字段（强证据）
+- `match.header`：正则匹配"任意 header 名或值"（强证据）
+- `match.payload_keywords`：字面量匹配 URI / 请求 body（弱辅证）
+- `weight.ua / header / payload`：各段命中加分（默认 10/10/1）
+
+### 3.3 `tools/requirements.txt`
+依赖清单（pip 安装）：
+
+```
+scapy>=2.5.0          # pcap 解析 + HTTP 层
+PyYAML>=6.0           # 规则库加载
+```
+
+### 3.4 `tools/generate_ssh_key.py`
 开发辅助工具。生成 ed25519 SSH key（绕过 PowerShell 引号坑）。
 
 ## 4. 关键设计决策
 
-### 4.1 pcap 解析：默认 scapy，tshark 作降级
+### 4.1 pcap 解析：scapy（不引入 tshark）
 
 > 本决策遵循 [docs/principles.md](principles.md) §1「Python package 优先于外部 CLI」。
 
-- **默认走 scapy**：`pip install scapy` 即用，跨 Windows / Linux / macOS 一致，无需装 Wireshark
-- **降级路径 tshark**：scapy 解析失败（畸形包、罕见协议层）时自动 fallback 到 `tshark -T fields`
-- **可移植性优先**：scapy 行为可重现（`requirements.txt` 锁版本）；tshark 版本由系统决定，可能漂移
-- **协议准确性**：scapy 自定义解析对 HTTP/HTTPS/DNS 主流字段够用；Wireshark 在私有/罕见协议更准，但这类场景**不是本项目 v0.2.0 范围**
-- **性能**：scapy 在 170MB pcap 上 ~30s 完成（可接受），未来若性能瓶颈再评估切到 tshark 默认路径
+v0.2.0 **完全用 scapy**，不引入 tshark 降级路径：
+- **可移植性**：`pip install scapy` 跨 Windows / Linux / macOS 一致，无需装 Wireshark
+- **单语言栈**：所有逻辑在 Python 内部，错误处理、异常捕获统一
+- **依赖锁定**：`requirements.txt` 锁版本，行为可重现；tshark 版本由系统决定，可能漂移
+- **协议准确性**：scapy 的 `HTTPRequest` 层对标准 + 自定义 header 都能识别（自定义进 `Headers` 列表），应急题够用
+- **性能**：scapy frame 级解析在 170MB pcap 上预估 30-60s 可接受
+
+**未来评估**：如果 v0.3.0+ 出现跨 segment 的 HTTP request 漏检问题，再考虑：
+1. 加 `TCPSession` 模式（内存换准确性）
+2. 极端情况 fallback 到 tshark（违反铁律 §1，需新写例外条款）
 
 ### 4.2 为什么用 YAML 规则库
 - 人类可读，加新扫描器无需改代码

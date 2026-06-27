@@ -4,8 +4,8 @@
 
 | 版本 | 主题 | 状态 | 预计交付 |
 |---|---|---|---|
-| v0.1.0 | 项目骨架 | 🚧 进行中 | README + 4 份核心文档 + .gitignore |
-| v0.2.0 | 工具迁移 | ⏳ 待启动 | MVP v3 + 规则库 + 题解样例 |
+| v0.1.0 | 项目骨架 | ✅ 已发布 | README + 5 份核心文档 + .gitignore |
+| v0.2.0 | 首模块：扫描器识别 | 🚧 进行中 | scapy 主分析器 + scanners.yaml + 题解样例 |
 | v0.3.0 | HTTP body 提取 | ⏳ | 一键导出 HTTP 对象到目录，找 flag |
 | v0.4.0 | 多协议支持 | ⏳ | SMB / FTP / MySQL / Redis |
 | v0.5.0 | webshell 专项 | ⏳ | POST multipart 检测 + 上传时间轴 |
@@ -35,23 +35,29 @@
 
 ---
 
-## v0.2.0 — 工具迁移（下一次迭代）
+## v0.2.0 — 首模块：扫描器识别（本次迭代）
 
-**目标**：把已验证的 MVP v3 工具迁入仓库，建立完整流程。
+**目标**：用 scapy 搭建流量分析工具框架，落地第一个功能模块 —— **通过 HTTP header / UA 识别攻击者使用的扫描器**。
+
+**设计原则**：
+- 遵循 [docs/principles.md](principles.md) §1：scapy 替代 tshark，Python package 优先
+- 框架可扩展：后续 webshell / 攻击链模块都基于这套框架叠加
+- 规则数据驱动：scanners.yaml 加一行就能识别新扫描器
 
 **交付**：
-- [ ] `tools/src/mvp_v3.py` — 主分析器（已验证可工作）
-- [ ] `tools/src/extract_headers.py` — header 发现工具
-- [ ] `tools/rules/scanners.yaml` — 29 条扫描器规则
-- [ ] `tools/generate_ssh_key.py` — SSH key 生成（dev 工具）
+- [ ] `tools/src/mvp_v3.py` — scapy 主分析器（frame 级 HTTP 解析 + 三段式匹配 + Markdown 报告）
+- [ ] `tools/rules/scanners.yaml` — 扫描器规则库（搬旧 + 扩 nessus）
+- [ ] `tools/requirements.txt` — 依赖锁定（scapy / PyYAML）
+- [ ] `tools/generate_ssh_key.py` — 已存在的 dev 工具，迁入
 - [ ] `examples/web_attack.md` — 真实题目题解（writeup）
 - [ ] `examples/web_attack_report.md` — MVP 跑出的样例报告
-- [ ] 第一次自动化跑通验证
 
 **验收标准**：
-- 跑 `web_attack.pcap` 能复现 v3 报告
-- 攻击者 IP、扫描器、攻击时间线全部正确
-- YAML 加新规则能立即生效
+- `pip install -r tools/requirements.txt` 一条命令搞定依赖
+- `python tools/src/mvp_v3.py --pcap <path>` 跑 web_attack.pcap 出 Markdown 报告
+- 攻击者 IP `192.168.94.59`、扫描器 AWVS + sqlmap、时间线全部正确
+- YAML 加新规则能立即生效（无需改 Python 代码）
+- 跨平台：Windows / Linux / macOS 同一份代码可跑
 
 ---
 
@@ -60,7 +66,7 @@
 **目标**：解决"flag 在响应 body 里"的场景。
 
 **交付**：
-- [ ] `tshark --export-objects http,outdir` 集成
+- [ ] 响应 body 提取（scapy `HTTPResponse` 层 + reassembly）
 - [ ] 响应 body 关键字扫描（flag 字符串正则）
 - [ ] base64 编码 body 自动解码
 - [ ] 图片/二进制文件单独目录保存
