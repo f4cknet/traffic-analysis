@@ -1,0 +1,6 @@
+# CTF 应急流量分析工具 - 依赖清单
+# 锁版本遵循 [docs/principles.md] §1：Python package 优先于外部 CLI
+# 安装: pip install -r tools/requirements.txt
+
+scapy>=2.5.0          # pcap 解析 + HTTP 层
+PyYAML>=6.0           # 扫描器规则库加载
