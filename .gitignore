@@ -1,0 +1,63 @@
+# ==============================
+# 大文件 (不入仓库)
+# ==============================
+
+# 流量包
+*.pcap
+*.pcapng
+*.cap
+*.dmp
+
+# 日志
+*.log
+*.log.*
+logs/
+
+# 报告产物
+out/
+*.csv
+*.tsv
+
+# 一次性 debug / 临时文件
+tools/_debug/
+tools/_tmp/
+*.tmp
+*.bak
+*.swp
+*~
+
+# ==============================
+# Python
+# ==============================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.installed.cfg
+*.egg
+
+# 虚拟环境
+venv/
+.venv/
+env/
+
+# 测试缓存
+.pytest_cache/
+.coverage
+htmlcov/
+
+# ==============================
+# IDE
+# ==============================
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# ==============================
+# OS
+# ==============================
+Thumbs.db
+desktop.ini
