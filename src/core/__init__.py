@@ -3,7 +3,8 @@
 供 src/module/* 所有模块使用. 不依赖具体业务 (scanner/webshell/login).
 
 公开 API:
-    utils:        split_uri, ts_to_str, classify_uri, is_browser_ua, SUCCESS_RESPONSE_CODES
+    utils:        split_uri, ts_to_str, classify_uri, is_browser_ua, SUCCESS_RESPONSE_CODES,
+                  hex_to_bytes, decode_body_str
     pcap_parser:  parse_records, find_tshark
 """
 
@@ -13,6 +14,8 @@ from .utils import (
     SUCCESS_RESPONSE_CODES,
     TSHARK_FIELDS,
     classify_uri,
+    decode_body_str,
+    hex_to_bytes,
     is_browser_ua,
     split_uri,
     ts_to_str,
@@ -21,5 +24,6 @@ from .utils import (
 __all__ = [
     "split_uri", "ts_to_str", "classify_uri", "is_browser_ua",
     "STD_HEADERS", "TSHARK_FIELDS", "SUCCESS_RESPONSE_CODES",
+    "hex_to_bytes", "decode_body_str",
     "parse_records", "find_tshark",
 ]
