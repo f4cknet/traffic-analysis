@@ -52,12 +52,16 @@ from src.core import STD_HEADERS, find_tshark, parse_records, ts_to_str
 MODULE_NAME_MAP = {
     "scanner":   "scanner_analyze",
     "loginpath": "login_analyze",
+    "cred":      "credential_analyze",  # v0.4.0 新增
 }
 
 
 AVAILABLE_MODULES = {
     "scanner":   ("scanner_analyze", "rules/scanners.yaml"),
     "loginpath": ("login_analyze",   "rules/login_paths.yaml"),
+    # credential-analyze 复用 login-analyze 的 login_paths.yaml (同一套登录接口定义)
+    # 默认路径用 ../ 相对, resolve() 时会自动规范化
+    "cred":      ("credential_analyze", "../login_analyze/rules/login_paths.yaml"),
 }
 
 
@@ -79,7 +83,7 @@ def resolve_rules_path(cli_name: str, custom: Path | None) -> Path:
         return custom
     py_name, default_rel = AVAILABLE_MODULES[cli_name]
     project_root = Path(__file__).resolve().parents[1]
-    return project_root / "src" / "module" / py_name / default_rel
+    return (project_root / "src" / "module" / py_name / default_rel).resolve()
 
 
 # ============== CLI ==============
@@ -102,7 +106,7 @@ def main():
     )
     parser.add_argument("--pcap", required=True, type=Path, help="pcap/pcapng 文件路径")
     parser.add_argument("-m", "--module", choices=list(AVAILABLE_MODULES.keys()),
-                        default="scanner", help="分析模块 (默认 scanner, 选项: scanner|loginpath)")
+                        default="scanner", help="分析模块 (默认 scanner, 选项: scanner|loginpath|cred)")
     parser.add_argument("--rules", type=Path, default=None, help="自定义 YAML 规则库路径")
     args = parser.parse_args()
 
