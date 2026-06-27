@@ -114,6 +114,41 @@
   - 这覆盖了 v0.4.0 没识别的请求 (之前因字段名不在 hardcoded 列表里被过滤)
 - **运行命令**: `python src/analyze.py --pcap examples/web_attack.pcap -m cred`
 
+### Added (credential-analyze) — v0.4.2 登录成功码可配置
+- **`--login-success-code` CLI 参数** (analyze.py): 用户自指定"登录成功"的响应状态码
+  - 逗号分隔: `--login-success-code 302,303` (默认, form submit 标准)
+  - 单值: `--login-success-code 200` (RESTful API 风格)
+  - 多值混合: `--login-success-code 200,201` (移动端 API)
+- **修正默认 {200, 302, 303} → {302, 303}**: v0.4.0 把 200 也算"高度可疑"是错的, 200 在 form submit 场景是回显登录失败页. 真"登录成功"只能是 302/303 (跳转) 或 RESTful 200 (用户自指定).
+- **模块 API 升级**:
+  - `LOGIN_SUCCESS_RESPONSE_CODES_DEFAULT = frozenset({302, 303})` (新名, 准确)
+  - `SUSPICIOUS_LOGIN_RESPONSE_CODES` 保留作向后兼容别名
+  - `is_suspicious_login_success(rec, status, success_codes=None)` — 接 success_codes 参数
+  - `collect_credential_attempts(http_data, paths_data, field_aliases=None, success_codes=None)`
+  - `analyze(http_data, paths_data, field_aliases=None, success_codes=None)`
+  - `print_summary(..., success_codes=None)`
+- **fixture 全用 302**: 单测 attack_http_data 的 s1-s9 全部用 302 响应 (v0.4.1 还混用 200/302, v0.4.2 改为全部 302)
+
+### 端到端 web_attack.pcap 验证 (v0.4.2 金标准登录成功)
+- 默认 `--login-success-code 302,303` 过滤后: **只剩 5 条真登录成功尝试 / 2 组独立凭证**
+- **这是用户问题的答案 — 攻击者真破解的账号密码**:
+  - `192.168.94.59` (主攻) 16:03 16:11 两次成功: **`username=admin` + `password=admin!@#pass123`**
+  - `192.168.94.233` (伴攻) 14:35 / 14:41 / 16:11 三次成功: **`username=人事` + `password=hr123456`** (中文账号!)
+- **攻击时间线**: 伴攻 14:35 首次成功, 主攻 16:03 首次成功 → **约 1.5 小时破解周期**
+- 对比 v0.4.1 (2815/2256): 噪声被彻底剥离, 5 条就是 5 条真登录成功.
+- 对比默认 {200, 302, 303} (v0.4.1): 200 全部是回显登录失败页, 没一条是真成功.
+- **运行命令**:
+  ```bash
+  # 默认 (form submit 场景)
+  python src/analyze.py --pcap examples/web_attack.pcap -m cred
+
+  # RESTful API 场景 (200 是登录成功)
+  python src/analyze.py --pcap x.pcap -m cred --login-success-code 200
+
+  # 移动端 API (200/201 都算)
+  python src/analyze.py --pcap x.pcap -m cred --login-success-code 200,201
+  ```
+
 ### 历史 Unreleased 改动 (本次重构前)
 
 > 以下是重构前已 push 但还没发布的改动, 重构后全部并入新结构.
