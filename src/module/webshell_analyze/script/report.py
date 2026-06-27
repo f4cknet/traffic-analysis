@@ -81,8 +81,8 @@ def print_summary(pcap_path, records_count: int, parse_ms: float,
 
     # 一、关联摘要 (上传 + 后续访问)
     print(f"\n[1] 上传 + 访问 关联摘要 (按文件名聚合, 上传时间升序)")
-    print(f"  {'文件名':<30} {'上传时间':<19} {'访问':>4}  {'首访/末访':<32}  {'密码/命令摘要'}")
-    print(f"  {'-'*30} {'-'*19} {'-'*4}  {'-'*32}  {'-'*40}")
+    print(f"  {'文件名':<30} {'上传时间':<19} {'访问':>4}  {'首访/末访':<32}  {'代码/访问 密码摘要'}")
+    print(f"  {'-'*30} {'-'*19} {'-'*4}  {'-'*32}  {'-'*50}")
     if linked:
         for lk in linked:
             fname = lk["filename"]
@@ -98,19 +98,20 @@ def print_summary(pcap_path, records_count: int, parse_ms: float,
             # 密码/命令摘要
             pwds = lk["passwords_seen"]
             cmds = lk["cmds_seen"]
-            summary = ""
+            # v0.5.1: 从代码 body 抽的密码 (更可靠)
+            code_pwds = lk.get("code_passwords", [])
+            code_funcs = lk.get("code_functions", [])
+            summary_parts = []
+            if code_funcs:
+                summary_parts.append(f"函数={','.join(code_funcs[:3])}")
+            if code_pwds:
+                summary_parts.append(f"代码pwd={','.join(code_pwds[:3])}")
             if pwds:
-                pwd_str = ",".join(list(pwds)[:3])
-                summary = f"pwd={pwd_str}"
+                summary_parts.append(f"访问pwd={','.join(list(pwds)[:2])}")
             if cmds:
-                cmd_str = ",".join(list(cmds)[:3])
-                if summary:
-                    summary += f" | cmd={cmd_str}"
-                else:
-                    summary = f"cmd={cmd_str}"
-            if not summary:
-                summary = "(无密码/命令)"
-            print(f"  {fname:<30} {upload_ts:<19} {access_cnt:>4}  {time_range:<32}  {summary[:40]}")
+                summary_parts.append(f"cmd={','.join(list(cmds)[:2])}")
+            summary = " | ".join(summary_parts) if summary_parts else "(无密码/命令)"
+            print(f"  {fname:<30} {upload_ts:<19} {access_cnt:>4}  {time_range:<32}  {summary[:50]}")
     else:
         print(f"  未检测到 multipart 上传")
 
@@ -133,14 +134,24 @@ def print_summary(pcap_path, records_count: int, parse_ms: float,
             print(f"  {i}. 文件名: {fname}")
             print(f"     上传时间: {upload.get('ts_str', '?')}  IP: {upload.get('ip_src', '?')}")
             print(f"     上传 URI: {upload.get('uri', '?')}")
+            # v0.5.1: 代码层面的解析
+            language = lk.get("language", "unknown")
+            code_funcs = lk.get("code_functions", [])
+            code_pwds = lk.get("code_passwords", [])
+            if code_funcs or code_pwds:
+                print(f"     语言: {language}")
+                print(f"     webshell 函数: {','.join(code_funcs) if code_funcs else '(无)'}")
+                print(f"     代码提取的密码: {','.join(code_pwds) if code_pwds else '(无)'}")
+            else:
+                print(f"     (body 里没匹配到已知 webshell 函数模式)")
             if lk["accesses"]:
                 pwd_set = lk["passwords_seen"]
                 cmd_set = lk["cmds_seen"]
                 pwd_str = ",".join(pwd_set) if pwd_set else "(无)"
                 cmd_str = ",".join(cmd_set) if cmd_set else "(无)"
                 print(f"     后续访问: {lk['access_count']} 次, 首访 {lk['first_access_str']}, 末访 {lk['last_access_str']}")
-                print(f"     提取的密码: {pwd_str}")
-                print(f"     提取的命令: {cmd_str}")
+                print(f"     URL 参数密码: {pwd_str}")
+                print(f"     URL 参数命令: {cmd_str}")
             else:
                 print(f"     后续访问: 无 (上传后没人调用)")
             print()

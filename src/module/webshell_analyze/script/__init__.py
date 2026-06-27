@@ -41,6 +41,11 @@ from .matcher import (
     match_webshell_path,
     parse_multipart_filename,
 )
+from .parser import (
+    WEBSHELL_FUNCTIONS,
+    detect_webshell_functions,
+    extract_webshell_from_multipart_body,
+)
 from .report import analyze, print_summary
 
 # analyze.py dispatcher 通用入口 — 统一叫 load_rules (跨 module 一致)
@@ -52,6 +57,9 @@ __all__ = [
     "is_multipart_upload", "parse_multipart_filename",
     "extract_url_query", "extract_urlencoded_params",
     "detect_upload", "detect_access",
+    # parser (v0.5.1)
+    "detect_webshell_functions", "extract_webshell_from_multipart_body",
+    "WEBSHELL_FUNCTIONS",
     # aggregator
     "collect_uploads", "collect_accesses",
     "link_uploads_to_accesses", "find_orphan_accesses",

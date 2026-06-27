@@ -181,11 +181,14 @@ def extract_urlencoded_params(body_bytes: bytes, content_type: str = "") -> dict
 
 def detect_upload(rec: dict) -> dict | None:
     """
-    检测单条记录是否为 multipart 上传 + 抽 filename.
+    检测单条记录是否为 multipart 上传 + 抽 filename + 解析内容.
 
     返回:
       None - 不是 multipart 上传 (或解析失败)
-      {filename, ts_epoch, ip_src, ua, content_type, uri, body_size} - 提取成功
+      {filename, ts_epoch, ip_src, ua, content_type, uri, body_size,
+       functions, passwords, language} - 提取成功
+
+    v0.5.1 加: 调用 parser.extract_webshell_from_multipart_body 抽 webshell 函数和密码
     """
     if not is_multipart_upload(rec):
         return None
@@ -194,6 +197,25 @@ def detect_upload(rec: dict) -> dict | None:
     filename = parse_multipart_filename(body_bytes, content_type)
     if not filename:
         return None
+
+    # 解析 body 内容, 抽 webshell 函数 + 密码
+    functions: list[str] = []
+    passwords: list[str] = []
+    language: str = "unknown"
+    from .parser import extract_webshell_from_multipart_body
+    parsed_parts = extract_webshell_from_multipart_body(body_bytes)
+    if parsed_parts:
+        # 合并所有 part 的提取结果
+        for p in parsed_parts:
+            for f in p["functions"]:
+                if f not in functions:
+                    functions.append(f)
+            for pwd in p["passwords"]:
+                if pwd not in passwords:
+                    passwords.append(pwd)
+        # 用第一个 part 的 language (实际场景 multipart 里只有一个文件 part)
+        language = parsed_parts[0]["language"]
+
     return {
         "filename": filename,
         "ts_epoch": rec.get("ts_epoch", 0),
@@ -203,6 +225,9 @@ def detect_upload(rec: dict) -> dict | None:
         "host": rec.get("host", ""),
         "content_type": content_type,
         "body_size": len(body_bytes),
+        "functions": functions,
+        "passwords": passwords,
+        "language": language,
     }
 
 

@@ -100,6 +100,9 @@ def link_uploads_to_accesses(uploads: list[dict],
                 "access_count": 0,
                 "passwords_seen": set(),
                 "cmds_seen": set(),
+                "code_functions": u.get("functions", []),  # v0.5.1 从 body 抽
+                "code_passwords": u.get("passwords", []),  # v0.5.1 从 body 抽
+                "language": u.get("language", "unknown"),  # v0.5.1
             })
             continue
 
@@ -119,6 +122,9 @@ def link_uploads_to_accesses(uploads: list[dict],
             "access_count": len(related),
             "passwords_seen": passwords,
             "cmds_seen": cmds,
+            "code_functions": u.get("functions", []),  # v0.5.1
+            "code_passwords": u.get("passwords", []),  # v0.5.1
+            "language": u.get("language", "unknown"),  # v0.5.1
         })
 
     # 按上传时间排序
