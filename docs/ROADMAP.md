@@ -37,31 +37,38 @@
 
 ## v0.2.0 — 首模块：扫描器识别（本次迭代）
 
-**目标**：用 scapy 搭建流量分析工具框架，落地第一个功能模块 —— **通过 HTTP header / UA 识别攻击者使用的扫描器**。
+**目标**：落地第一个功能模块 —— **通过 HTTP header / UA 识别攻击者使用的扫描器**。同时建立**模块化项目结构**（`src/core/` + `src/module/{name}/`），后续 webshell / login / 攻击链模块直接套用。
 
 **设计原则**：
-- 触发 [docs/principles.md](principles.md) §1.4 例外条款：**tshark 默认 + scapy fallback**（实测性能 12× 差距）
-- 框架可扩展：后续 webshell / 攻击链模块都基于这套框架叠加
-- 规则数据驱动：scanners.yaml 加一行就能识别新扫描器
-- 测试覆盖：`tools/tests/` pytest 单测，纯 dict fixture，0.1s 跑完
+- **目录组织**：按业务分析类型分 module，每个 module 自包含 rules + script + test；共享代码放 src/core/
+- **CLI 入口**：单一 dispatcher (`--module xxx`)，避免每个 module 一个 entry script
+- **后端选型**：仅 tshark，不保留 scapy fallback（实测 12× 性能差距 + 应急场景对延迟敏感）
+- **规则数据驱动**：scanners.yaml 加一行就能识别新扫描器
+- **测试覆盖**：单测紧耦合 module（`src/module/scanner-analyze/test/`），纯 dict fixture，0.1s 跑完
+- **query 污染防护**：payload 段只看 URI path，不含 query string
 
 **交付**：
-- [x] `tools/src/analyze.py` — 主分析器（tshark 默认 + scapy `--backend` 切换）
-- [x] `tools/src/analyzer_core.py` — 共享分析逻辑（load_rules / analyze / render_md / match_scanner）
-- [x] `tools/rules/scanners.yaml` — 30 条扫描器规则（搬旧 + 扩 nessus）
-- [x] `tools/src/extend-tools/tshark/` — 瘦身后的 tshark 4.6.6 (110MB / 50 文件)
-- [x] `tools/requirements.txt` — 运行时依赖（PyYAML + 可选 scapy）
-- [x] `tools/requirements-dev.txt` — 开发依赖（pytest）
-- [x] `tools/tests/` — 48 个 pytest 单测，0.09s 跑完
-- [x] `tools/generate_ssh_key.py` — dev 工具，迁入
+- [x] `src/analyze.py` — CLI 入口 + dispatcher (`--module scanner-analyze`)
+- [x] `src/core/` — 跨 module 共享 (pcap_parser + utils)
+- [x] `src/module/scanner-analyze/`
+  - [x] `rules/scanners.yaml` — 30 条扫描器规则（搬旧 + 扩 nessus）
+  - [x] `script/matcher.py` — `match_scanner` 三段式匹配（query 污染防护）
+  - [x] `script/aggregator.py` — `analyze` 全量聚合 + `aggregate_per_ip_scanners`
+  - [x] `script/report.py` — 控制台 `print_summary` 高可疑结果摘要
+  - [x] `test/` — 41 个 pytest 单测（含 query 污染防护测试），0.06s 跑完
+- [x] `src/extend-tools/tshark/` — 瘦身后的 tshark 4.6.6 (110MB / 50 文件)
+- [x] `src/module/webshell-analyze/` — 占位 (v0.3.0+)
+- [x] `src/module/login-analyze/` — 占位 (v0.4.0+)
+- [x] `requirements.txt` / `requirements-dev.txt` — 顶层依赖
 - [ ] `examples/web_attack.md` — 真实题目题解（writeup）
-- [ ] `examples/web_attack_report.md` — analyze.py 跑出的样例报告
 
 **验收标准**：
-- ✅ `python tools/src/analyze.py --pcap <path>` 跑 web_attack.pcap 出 Markdown 报告
-- ✅ 攻击者 IP `192.168.94.59`（71217 请求）、扫描器 AWVS (header 命中 352) + sqlmap (UA 命中 6)、XFF 注入 20952、WebDAV 3 — 全部正确（与已验证结论完全吻合）
+- ✅ `python src/analyze.py --pcap web_attack.pcap` 跑出控制台高可疑结果摘要
+- ✅ 攻击者 IP `192.168.94.59`（71217 请求）、扫描器 AWVS (header 命中 352) + sqlmap (UA 命中 6)、XFF 注入 20952、WebDAV 3 — 全部正确
 - ✅ YAML 加新规则能立即生效（无需改 Python 代码）
-- ✅ `pytest tools/tests/` 48 passed in 0.09s
+- ✅ query string 含 `acunetix` **不**触发 payload 段（query 污染防护）
+- ✅ `pytest src/module/scanner-analyze/test/` 41 passed in 0.06s
+- ✅ 解析耗时 ~12s（tshark 9s + analyze < 1s + print_summary < 1s）
 - ⚠ 跨平台：当前 tshark 子集仅 Windows x64；Linux/macOS 需从对应平台安装包按同样策略瘦身
 
 ---

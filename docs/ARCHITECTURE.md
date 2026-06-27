@@ -74,155 +74,154 @@ report_v3_<timestamp>.md
 
 ## 3. 模块划分
 
-### 3.1 `tools/src/analyze.py`（v0.2.0 主分析器）
+```
+analyzer-toolkit/
+├── docs/                              # 文档
+├── README.md
+├── .gitignore
+├── requirements.txt                   # 顶层运行时依赖
+├── requirements-dev.txt               # 顶层开发依赖
+├── out/                               # .gitignore 排除 (报告输出)
+│
+└── src/
+    ├── analyze.py                     # CLI 入口 + module dispatcher
+    │
+    ├── core/                          # 跨 module 共享
+    │   ├── __init__.py
+    │   ├── pcap_parser.py             # tshark 子进程 + parse_records + URI 拆分
+    │   └── utils.py                   # split_uri / ts_to_str / classify_uri / is_browser_ua
+    │
+    ├── extend-tools/
+    │   └── tshark/                    # 瘦身后的 tshark 二进制子集 (110MB)
+    │
+    ├── _debug/                        # 调试脚本 (.gitignore 排除)
+    │
+    └── module/
+        ├── scanner-analyze/           # 第一个分析模块
+        │   ├── rules/
+        │   │   └── scanners.yaml
+        │   ├── script/
+        │   │   ├── __init__.py        # 公开 API
+        │   │   ├── matcher.py         # match_scanner (三段式匹配)
+        │   │   ├── aggregator.py      # analyze + aggregate_per_ip_scanners
+        │   │   └── report.py          # 控制台 print_summary
+        │   └── test/                  # 单测紧耦合 module
+        │       ├── conftest.py
+        │       ├── test_load_rules.py
+        │       ├── test_match.py
+        │       └── test_split_uri.py
+        │
+        ├── webshell-analyze/          # 占位 (v0.3.0+)
+        │   └── README.md              # TODO 说明
+        │
+        └── login-analyze/             # 占位 (v0.4.0+)
+            └── README.md
+```
 
-主分析器。负责 pcap → 扫描器识别全流程。
+### 3.1 `src/analyze.py` — CLI 入口 + dispatcher
 
-**CLI 接口**：
+**职责**：
+- 解析 CLI 参数（`--pcap` / `--module` / `--rules`）
+- 调用 `core.pcap_parser.parse_records()` 抽 HTTP 请求
+- 根据 `--module` dispatch 到对应 module 的 analyzer
+- 输出结果（默认控制台，可扩展 Markdown/JSON）
+
+**CLI**：
 
 ```bash
-python tools/src/analyze.py --pcap <file.pcap>
-python tools/src/analyze.py --pcap <file.pcap> --backend scapy   # 显式切 scapy
-python tools/src/analyze.py --pcap <file.pcap> --backend auto    # tshark 优先, 降级 scapy
+# 扫描器识别 (默认 module)
+python src/analyze.py --pcap <file.pcap>
+
+# 显式指定 module
+python src/analyze.py --pcap <file.pcap> --module scanner-analyze
+
+# 自定义规则
+python src/analyze.py --pcap <file.pcap> --rules custom.yaml
 ```
 
 参数：
 - `--pcap`（必填）：pcap/pcapng 文件路径
-- `--rules`（默认 `tools/rules/scanners.yaml`）：YAML 规则库
-- `--out`（默认 `out/report_<backend>_<timestamp>.md`）：Markdown 报告输出路径
-- `--backend`（默认 `tshark`）：`tshark` / `scapy` / `auto`
-- `--tshark`（可选）：显式指定 tshark.exe 路径
+- `--module`（默认 `scanner-analyze`）：分析模块名
+- `--rules`（可选）：自定义 YAML 规则库路径
 
-**核心流程**：
+**为什么 dispatcher 而不是多个 entry script**：
 
-```
-pcap
-  │ [backend: tshark | scapy] -> records
-  ▼
-records (list[dict])
-  │ analyze (三段式 + 聚合 + 评分)
-  ▼
-stats dict
-  │ render_md
-  ▼
-report.md
-```
+未来 webshell / login 都要 CLI 入口。如果每个 module 自己的 `analyze_xxx.py`，又退回到"每个变体一个文件"反模式。一个 `analyze.py --module xxx` dispatcher 更干净。
 
-**后端选择**（默认 tshark）：
-- **tshark**：libpcap 原生 C 解析，~9 秒/174MB pcap，性能优先
-- **scapy**：纯 Python 包解析，~110 秒/174MB pcap，便携优先
-- **auto**：tshark 可用就用 tshark，否则降级 scapy
+### 3.2 `src/core/` — 跨 module 共享
 
-切换后端不需要改代码逻辑 — 两实现都返回相同结构的 records list。
+**`core/pcap_parser.py`**：
+- `parse_records(pcap_path)` — 调 tshark + 拆 URI path/query → 返回 records list
+- `find_tshark()` — 找 tshark.exe（项目内置 extend-tools/）
 
-### 3.2 `tools/src/analyzer_core.py`
+**`core/utils.py`**：
+- `split_uri(uri)` — 拆 URI 为 (path, query)，防 query string 污染 payload 段
+- `ts_to_str(epoch)` — epoch → 'YYYY-MM-DD HH:MM:SS'
+- `classify_uri(uri)` — URI 攻击类型分类
+- `is_browser_ua(ua)` — 判断是否正常浏览器 UA
 
-共享分析逻辑（不依赖 pcap 解析后端）：
-- `load_rules(path)`：YAML 加载 + 预编译正则
-- `match_scanner(rec, rules)`：单条记录三段式匹配
-- `analyze(records, rules)`：全量聚合 + 攻击者评分
-- `render_md(stats, rules, pcap, out)`：Markdown 报告渲染
-- 攻击类型分类 + 浏览器 UA 判断工具
+**为什么独立 core/**：
 
-### 3.3 `tools/rules/scanners.yaml`
+scanner / webshell / login 都要从 pcap 抽 HTTP 请求（共享 pcap_parser）。URI 拆分、UA 判断、URI 攻击类型分类也是通用的（共享 utils）。不放 core/ 就要每个 module 复制 → DRY 违反。
 
-规则库（30 条）。每条规则结构：
+### 3.3 `src/module/scanner-analyze/` — 扫描器识别模块
 
-```yaml
-- id: acunetix_wvs
-  name: Acunetix Web Vulnerability Scanner (AWVS)
-  category: web_vuln_scanner
-  ctf_priority: 10
-  description: 商业 Web 漏洞扫描器
-  match:
-    ua:
-      - "acunetix_wvs_security_test"
-    header:
-      - "Acunetix-Aspect"
-    payload_keywords:
-      - "acunetix"
-  weight:
-    ua: 10
-    header: 12
-    payload: 1
-```
+第一个分析模块。**自包含**：rules + script + test 都在 module 内。
 
-匹配字段说明：
-- `match.ua`：正则匹配 User-Agent 字段（强证据）
-- `match.header`：正则匹配"任意 header 名或值"（强证据）
-- `match.payload_keywords`：字面量匹配 URI / 请求 body（弱辅证）
-- `weight.ua / header / payload`：各段命中加分（默认 10/10/1）
+**`rules/scanners.yaml`**：30 条扫描器规则。
 
-### 3.4 `tools/src/extend-tools/tshark/`
+**`script/`**：
+- `matcher.py` — `match_scanner(rec, rules)` 单条记录三段式匹配（UA / header / payload）
+- `aggregator.py` — `analyze(records, rules)` 全量聚合 + `aggregate_per_ip_scanners(stats, rules)` 每 IP 扫描器摘要
+- `report.py` — `print_summary(...)` 控制台高可疑结果摘要
+- `__init__.py` — 公开 API（re-export）
 
-瘦身后的 tshark 4.6.6 二进制子集（110MB / 50 文件），从完整 Wireshark 安装包 (280MB / 1342 文件) 砍掉 GUI / 其他工具 / 协议模块 / codec 杂项而来。
+**`test/`**：pytest 单测（紧耦合 module）
+- `conftest.py` — 共享 fixture
+- `test_load_rules.py` — YAML 加载 + nessus 在内
+- `test_match.py` — 三段式触发 + weight 累加 + query 污染防护
+- `test_split_uri.py` — `split_uri` helper 单元测
 
-包含：
-- `tshark.exe` 主程序
-- `libwireshark.dll` (90MB) + `libwiretap.dll` + `libwsutil.dll` 核心三件套
-- GLib / TLS / 字符编码 / 压缩库等系统依赖
+跑测试：`python -m pytest src/module/scanner-analyze/test/`
 
-仅 Windows x64。要在 Linux / macOS 上跑，需要按同样策略从对应平台安装包瘦身。
+### 3.4 `src/extend-tools/tshark/`
 
-`analyze.py` 默认从 `tools/src/extend-tools/tshark/tshark.exe` 找 tshark。
+瘦身后的 tshark 4.6.6 二进制子集（110MB / 50 文件）。从完整 Wireshark 安装包 (280MB / 1342 文件) 砍掉 GUI / 其他工具 / 协议模块 / codec 杂项而来。
 
-### 3.5 `tools/tests/`
+`analyze.py` 默认从 `src/extend-tools/tshark/tshark.exe` 找 tshark。
 
-pytest 单测。覆盖：
-- `test_load_rules.py` — YAML 加载 + 字段完整 + nessus 在内
-- `test_match_scanner.py` — 三段式触发 + weight 累加 + 边界情况
-- `test_analyze.py` — 全量聚合 + 攻击者评分 + URI 攻击类型分类
-- `test_render.py` — Markdown 输出文件 + 关键字段齐全
+仅 Windows x64。要在 Linux / macOS 上跑，需要从对应平台安装包按同样策略瘦身。
 
-跑测试：`pip install -r tools/requirements-dev.txt && python -m pytest tools/tests/`
+### 3.5 `src/module/{webshell,login}-analyze/`
 
-### 3.6 `tools/requirements.txt` / `requirements-dev.txt`
+v0.3.0+ / v0.4.0+ 才填的占位目录。每个目录下放 `README.md` 说明 TODO。
 
-依赖清单：
-```
-# requirements.txt (运行时)
-PyYAML>=6.0                # 规则库加载 (tshark 后端)
-scapy>=2.5.0               # scapy 后端 (可选, --backend scapy 才需要)
-
-# requirements-dev.txt (开发时, 含 pytest)
-pytest>=7.0
-```
-
-**注意**：tshark 后端不依赖 scapy。用户只用 tshark 就不需要装 scapy，可移植性更好。
-
-### 3.7 `tools/generate_ssh_key.py`
-开发辅助工具。生成 ed25519 SSH key（绕过 PowerShell 引号坑）。
+按"业务分析按模块"组织：未来加新分析类型只需在 `src/module/` 下建新目录，复制 `scanner-analyze/` 模板填 rules + script + test 即可。
 
 ## 4. 关键设计决策
 
-### 4.1 pcap 解析：tshark 默认，scapy fallback
+### 4.1 pcap 解析：tshark 单后端
 
 > 本决策触发 [docs/principles.md](principles.md) §1.4 例外条款（性能差距 ≥ 10×）。
 
 **实测性能对比**（web_attack.pcap 174MB / 73万帧 / 71340 HTTP 请求）：
 
-| 后端 | parse_pcap 耗时 | 内存峰值 | 部署体积 |
+| 后端 | parse 耗时 | 内存峰值 | 部署体积 |
 |---|---:|---:|---:|
 | tshark | **~9 秒** | ~150MB | 110MB |
-| scapy | ~110 秒 | ~6GB | `pip install scapy` 几 MB |
+| scapy (历史对比) | ~110 秒 | ~6GB | ~10MB |
 
-scapy 慢 **12 倍**且吃 6GB 内存 — 应急分析场景下不可接受。
+scapy 慢 **12 倍**且吃 6GB 内存 — 应急分析场景下不可接受。**v0.2.0+ 只保留 tshark**，不再保留 scapy fallback：
 
-**默认选 tshark 的理由**：
 - **性能 12×**：libpcap 原生 C 解析 vs Python 逐帧 dissect
 - **内存友好**：独立子进程，常驻 150MB
-- **协议覆盖**：Wireshark 是行业标准，覆盖率高于 scapy 自定义解析
+- **协议覆盖**：Wireshark 是行业标准
 - **部署可控**：extend-tools/tshark/ 锁版本，行为可重现
 
-**保留 scapy 作为 fallback**：
-- 便携场景（无 extend-tools 时）：`--backend scapy` 切纯 Python 解析
-- pcap < 50MB 时 scapy 也够用，不必为小文件启动外部进程
-- 单测、CI：scapy 路径便于 mock 测试
-
-**触发原则**（按 principles.md §1.4 修订）：
-- pcap > 50MB → 默认 tshark（性能优先）
-- pcap < 50MB → 可选 scapy（便携优先）
-- tshark 不可用 → 自动降级 scapy（`--backend auto`）
+**trade-off**：
+- 失去 scapy 的便携性（无 tshark 二进制时跑不动）
+- 接受：v0.2.0 用户群是 CTF 应急分析师，机器性能 + Windows 为主
+- 跨平台留给 v1.0.0：届时按平台瘦身 tshark 子集
 
 ### 4.2 为什么用 YAML 规则库
 - 人类可读，加新扫描器无需改代码

@@ -44,7 +44,7 @@
 
 ### 1.4.1 已触发的例外
 
-**tshark 后端**（v0.2.0）— 触发条件 §1.4 (2)「性能差距 ≥ 10×」：
+**tshark 后端**（v0.2.0+）— 触发条件 §1.4 (2)「性能差距 ≥ 10×」：
 
 - **Python 候选**：scapy
 - **外部 CLI 候选**：tshark (Wireshark)
@@ -56,9 +56,10 @@
 | tshark | **~9 s** | **~150 MB** | extend-tools (110MB) |
 
 - **差距**：12× 速度 + 40× 内存
-- **决策**：tshark 默认，scapy 作 `--backend scapy` fallback
-- **可移植性补救**：scapy 在小 pcap (< 10MB) 和 CI/单测场景下仍是首选
-- **ARCHITECTURE §4.1** 详细描述触发逻辑（按 pcap 体积分流）
+- **决策**：v0.2.0+ **仅保留 tshark**, 删 scapy fallback (性能差距太大, 应急场景不可妥协)
+- **可移植性损失**: 无 tshark 二进制时跑不动
+- **补救**: v0.2.0 用户群是 CTF 应急分析师, Windows x64 为主; 跨平台留给 v1.0.0
+- **ARCHITECTURE §4.1** 详细描述
 
 ### 1.5 退到外部 CLI 时的硬性要求
 
