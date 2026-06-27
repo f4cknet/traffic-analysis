@@ -2,6 +2,11 @@
 
 基于 uri_path (不含 query) 字面量子串匹配 (大小写不敏感).
 
+匹配策略: **最长匹配优先** (longest-match-first).
+  在所有命中的 pattern 中, 取最长的作为唯一命中.
+  这样避免 /console/login 既触发 login_generic (/login) 又触发 weblogic (/console/login)
+  时的 overlap — 最具体的规则胜出.
+
 命中即视为该后台被访问过. 不区分攻击者/正常用户 — 由 aggregator 后续按 IP
 高频访问判断是否扫描.
 """
@@ -32,9 +37,7 @@ def match_login_path(rec: dict, paths_data: dict) -> list[dict]:
     """
     对单条记录检测其 uri_path 命中哪些登录后台规则.
 
-    按 yaml 顺序逐条 path_rule 检查, 一旦命中即停 (精确优先).
-    这样避免 /admin/login 同时触发 admin_generic + login_generic + ruoyi
-    这种 overlap (yaml 顺序越靠前越精确).
+    **最长匹配优先**: 在所有命中的 pattern 中, 取最长的作为唯一命中.
 
     返回 [{path_rule, hit_pattern}, ...] — 通常 0 或 1 个元素.
     """
@@ -42,10 +45,14 @@ def match_login_path(rec: dict, paths_data: dict) -> list[dict]:
     if not uri_path:
         return []
 
-    hits = []
+    best_hit = None  # (path_rule, pattern, pattern_len)
     for lp in paths_data["login_paths"]:
         for pattern in lp["_patterns_lower"]:
             if pattern in uri_path:
-                hits.append({"path_rule": lp, "hit_pattern": pattern})
-                return hits  # 第一条命中即返回 (精确优先, 避免 overlap)
-    return hits
+                if best_hit is None or len(pattern) > best_hit[2]:
+                    best_hit = (lp, pattern, len(pattern))
+
+    if best_hit is None:
+        return []
+    rule, pattern, _ = best_hit
+    return [{"path_rule": rule, "hit_pattern": pattern}]

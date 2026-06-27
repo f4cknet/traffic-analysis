@@ -80,9 +80,10 @@
 **`login_analyze` (CLI: `loginpath`)**：
 
 - `src/module/login_analyze/` — 登录后台路径模式匹配 + 攻击者画像
-  - `rules/login_paths.yaml` — admin/CMS/db/framework/app 5 类共 29 条
-  - 输出：扫描到的登录后台路径 + 探测 IP + 探测次数 + 时间范围
-- pytest: 27 passed in 0.04s
+  - `rules/login_paths.yaml` — login/CMS/db/framework 4 类共 22 条（**只保留真登录接口**, 删后台首页/注册/调试端点）
+  - 每条 rule 带 `methods: [POST]` (默认) 或 `[GET, POST]` (wp-login 等)
+  - 输出：扫描到的登录后台路径 + 探测 IP + 探测次数 + 时间范围 + methods 标签
+- pytest: 38 passed in 0.07s
 
 跑命令：`python src/analyze.py --pcap x.pcap -m loginpath`
 
@@ -90,23 +91,37 @@
 
 ```
 pcap
-  │ src.core.pcap_parser.parse_records (共享)
+  │ src.core.pcap_parser.parse_records (共享, 同时导 tcp.stream + http.response.code)
   ▼
-records
-  │ matcher.match_login_path (uri_path 匹配 login_paths.yaml)
+{requests, responses_by_stream}
+  │ matcher.match_login_path (longest-match-first, uri_path 匹配 login_paths.yaml)
   ▼
 hits (path_id × IP × ts)
-  │ aggregator.build_path_summary + build_attacker_profile
+  │ aggregator 双重过滤: status 2xx/3xx AND method in rule.methods
   ▼
 后台访问排行 + 攻击者画像
-  │ report.print_summary (控制台)
+  │ report.print_summary (控制台, 含 methods 标签)
   ▼
 答案
 ```
 
+**端到端 web_attack.pcap 验证（v0.3.1 重过滤后）**：
+
+| 过滤阶段              | 命中次数 | 噪声原因                          |
+|---------------------|---------|----------------------------------|
+| 过滤前                | 10183   | 攻击者 404 扫描 + 后台首页+注册+调试  |
+| 仅过滤 404            | 3559    | 还含后台首页(/admin/, /dede/index)|
+| **+ 过滤 GET-only**   | **2822**| **只剩真"登录尝试"(POST 提交凭证)** |
+
+**最终答案**: 黑客真正尝试登录的接口 = `/admin/login.php?rec=login` (2822 次 POST, 192.168.94.59 + 192.168.94.233)
+
 跑测试：`python -m pytest src/module/login_analyze/test/`
 
 **交付**：
+- [x] 响应状态过滤 (2xx/3xx only, 用 tcp.stream 关联)
+- [x] HTTP 方法过滤 (POST-only by default)
+- [x] matcher longest-match-first (避免 yaml 顺序重叠)
+- [x] yaml 重写: 删后台首页/注册/调试端点, 每条 rule 加 methods 字段
 - [ ] 响应 body 提取（scapy `HTTPResponse` 层 + reassembly）
 - [ ] 响应 body 关键字扫描（flag 字符串正则）
 - [ ] base64 编码 body 自动解码

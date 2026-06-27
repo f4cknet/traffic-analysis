@@ -5,11 +5,21 @@
 ## [Unreleased]
 
 ### Changed
-- **login_analyze 响应状态过滤**: 用 `tcp.stream` 关联 request/response, **只保留 2xx/3xx 响应**
-  - 攻击者大量 404 目录扫描噪声被过滤
-  - 报告输出从"10183 次访问"过滤到"3559 次真找到"
-  - 完整 URL (含 query) 保留输出 (支持 ThinkPHP 路由 `/index.php/Home/Login.html`)
-  - 端到端 web_attack.pcap 验证: 真找到 2 个后台, 之前是 10+ 个 噪声
+- **login_analyze 双重过滤**: **状态过滤 (2xx/3xx) + HTTP 方法过滤 (POST-only)**
+  - **状态过滤**: 用 `tcp.stream` 关联 request/response, 只保留 2xx/3xx 响应. 攻击者 404 扫描噪声被过滤.
+  - **方法过滤**: 每条 rule 带 `methods` 字段 (默认 `[POST]`). POST 是登录提交凭证的金标准 — GET 只是看表单页, 不算"尝试登录".
+  - **longest-match-first**: matcher 改用最长命中优先, 避免 yaml 顺序重叠 bug (e.g. `/console/login` 14 字 > `/login` 6 字, weblogic rule 胜出)
+  - 报告输出从"10183 次访问" → "3559 次真找到" → **"2822 次真尝试登录"** (web_attack.pcap)
+  - **最终结论**: 黑客真正尝试登录的接口 = **`/admin/login.php?rec=login`**
+    - 192.168.94.59: 2819 次 POST (主攻击者)
+    - 192.168.94.233: 3 次 POST (伴攻)
+- **login_paths.yaml 重写**: **只保留真登录接口**, 删后台首页/注册/调试端点
+  - 删除: `/admin/`、`/admin/index`、`/admin/manage`、`/wp-admin/`、`/dede/index.php`、`/dede/`、`/user/register`、`/actuator/`、`/swagger-ui`、`/kibana/`、`/flask debug` 等
+  - 保留: `/login`、`/admin/login`、`/wp-login.php`、`/dede/login.php`、`/phpmyadmin/`、`/adminer.php` 等
+  - **类别从 5 (admin/CMS/db/framework/app) 简化为 4 (login/CMS/db/framework)** — 砍掉冗余的 admin 和 app category
+  - **每条 rule 加 `methods: [POST]` (或 [GET, POST] for wp-login 等支持 GET 表单的)**
+  - **每条 rule 的 patterns 按"具体度倒序"排** (longest-match 兜底, 但 yaml 顺序也调好)
+- **matcher.py 升级**: `match_login_path` 改 longest-match-first (避免 yaml 顺序重叠 bug)
 - **records contract 升级**: `parse_records` 现在返回 `{requests, responses_by_stream}`
   - tshark 同时导出 `tcp.stream` + `http.response.code` 字段
   - module.analyze 接 `http_data` (而不是 records list), 自己取所需字段
