@@ -179,6 +179,47 @@
 - `tools/src/bench.py` — 一次性脚本, 移到 `tools/_debug/bench.py`
 - 根目录 `extend-tools/wireshark/` — 移到 `tools/src/extend-tools/tshark/` 并瘦身
 
+### Added (credential-analyze) — v0.5.0 webshell 专项 (第四问"webshell 文件名 + 上传时间 + 密码")
+- `src/module/webshell_analyze/` — 第四模块, 复用 src.core.pcap_parser
+  - `rules/webshell_paths.yaml` — 4 类共 ~50 个 webshell 路径模式:
+    - `generic_php` (28 个): `/shell.php`, `/cmd.php`, `/c.php`, `/r57.php`, `/c99.php`, `/caidao.php` 等
+    - `generic_jsp` (14 个): `/shell.jsp`, `/behinder.jsp`, `/ant.jsp`, `/godzilla.jsp` 等
+    - `generic_aspx` (7 个): `/shell.aspx`, `/cmd.aspx`, `/cmd.asp` 等
+    - `ctf_known_paths` (8 个): `/songgeshigedashuaibi/`, `/webshell/`, `/phpinfo.php` 等真实 CTF 老题路径
+    - `upload_dir` (7 个): `/upload/`, `/uploads/`, `/userfiles/`, `/attachments/`, `/tmp/`, `/temp/` (排除 `/images/` `/img/` `/static/` `/assets/` 静态资源目录, 防误报)
+  - `rules/webshell_fields.yaml` — 字段别名库 (yaml 驱动):
+    - `password` 类 (10 个): `pass`, `pwd`, `password`, `key`, `code`, `x`, `z0/z1/z2`, `0` (蚁剑默认)
+    - `cmd` 类 (10 个): `cmd`, `c`, `command`, `exec`, `run`, `action`, `do`, `query`, `sql`, `1` (蚁剑第二个字段)
+  - `script/matcher.py`:
+    - `is_multipart_upload(rec)` — Content-Type 判定
+    - `parse_multipart_filename(body, content_type)` — multipart body 抽 filename (含空 filename 过滤, 大小写不敏感)
+    - `match_webshell_path(uri_path, paths_data)` — longest-match-first
+    - `extract_url_query(uri)` / `extract_urlencoded_params(body, content_type)` — 参数提取
+    - `detect_upload(rec)` — multipart 上传 + filename 抽取
+    - `detect_access(rec, paths_data, field_aliases)` — 路径命中 OR URL/body 参数含密码字段
+  - `script/aggregator.py`:
+    - `collect_uploads(http_data)` — 所有 multipart 上传 (按时间线)
+    - `collect_accesses(http_data, paths_data, field_aliases)` — 所有 webshell 访问
+    - `link_uploads_to_accesses(uploads, accesses)` — 关联 (filename 包含 + 时间在前)
+    - `find_orphan_accesses(uploads, accesses)` — 找没匹配到上传的访问 (orphan)
+    - `build_attacker_profiles(...)` — 按 IP 聚合
+  - `script/report.py` — 控制台输出 ([1] 关联摘要 [2] 攻击者画像 [3] 关键结论 [4] 访问时间线)
+- `--module webshell` dispatcher route (`src/analyze.py -m webshell`)
+- 89 个单测全过 (multipart 解析 / URL 参数 / 字段别名 / 关联逻辑)
+
+### 端到端 web_attack.pcap 验证 (v0.5.0)
+- **1 条 multipart 上传**:
+  - 文件名 `1.php` (2018-08-08 16:12:49, 192.168.94.59, 上传到 `/admin/article.php?rec=update`)
+  - 这是攻击者上传的**真 webshell 文件**
+- **后续访问 0 次** — 上传后没看到调用 (可能脚本没继续, 或 webshell 被访问但未在本 pcap 中捕获)
+- **4099 条 URL 参数含密码字段的访问**:
+  - 主要是攻击者用 `pwd=g00dPa$$w0rD` 探测多个 URL (脚本化 fuzzing)
+  - 路径不命中 webshell_paths.yaml 的探测尝试
+- **关键洞察**:
+  - **真 webshell 上传已识别**: `1.php` 在 16:12:49 上传
+  - **攻击链完整**: v0.4.2 找到的 `admin/admin!@#pass123` (16:03 登录成功) → v0.5.0 找到的 `1.php` 上传 (16:12, 9 分钟后) → 攻击者登录后台后立即上传 webshell
+- **运行命令**: `python src/analyze.py --pcap examples/web_attack.pcap -m webshell`
+
 ## [0.1.0] - 2026-06-27
 
 ### Added
