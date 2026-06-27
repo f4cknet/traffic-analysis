@@ -52,7 +52,8 @@ from src.core import STD_HEADERS, find_tshark, parse_records, ts_to_str
 MODULE_NAME_MAP = {
     "scanner":   "scanner_analyze",
     "loginpath": "login_analyze",
-    "cred":      "credential_analyze",  # v0.4.0 新增
+    "cred":      "credential_analyze",
+    "webshell":  "webshell_analyze",  # v0.5.0 新增
 }
 
 
@@ -62,6 +63,7 @@ AVAILABLE_MODULES = {
     # credential-analyze 复用 login-analyze 的 login_paths.yaml (同一套登录接口定义)
     # 默认路径用 ../ 相对, resolve() 时会自动规范化
     "cred":      ("credential_analyze", "../login_analyze/rules/login_paths.yaml"),
+    "webshell":  ("webshell_analyze",  "rules/webshell_paths.yaml"),
 }
 
 
@@ -107,7 +109,7 @@ def main():
     )
     parser.add_argument("--pcap", required=True, type=Path, help="pcap/pcapng 文件路径")
     parser.add_argument("-m", "--module", choices=list(AVAILABLE_MODULES.keys()),
-                        default="scanner", help="分析模块 (默认 scanner, 选项: scanner|loginpath|cred)")
+                        default="scanner", help="分析模块 (默认 scanner, 选项: scanner|loginpath|cred|webshell)")
     parser.add_argument("--rules", type=Path, default=None, help="自定义 YAML 规则库路径")
     parser.add_argument("--login-success-code", type=str, default="302,303",
                         help="登录成功的响应码 (逗号分隔), 仅 -m cred 生效. "

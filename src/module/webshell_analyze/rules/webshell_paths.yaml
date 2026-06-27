@@ -1,0 +1,123 @@
+# webshell_paths.yaml - webshell 文件路径模式库
+#
+# 用途: 识别 pcap 中可疑的 webshell 文件访问. URI path 子串匹配 (大小写不敏感).
+#
+# 加新规则: 加一条 {id, name, patterns, methods}, **无需改代码**.
+#
+# 字段:
+# - patterns: URI path 子串 (不含 query)
+# - methods:  哪些 HTTP 方法命中算"访问". 默认 [GET, POST] (webshell 通常两种都支持)
+#
+# 设计原则:
+#   - 通用名 (shell.php/cmd.php) 放一个 rule, 命中即视为可疑
+#   - 上传目录 (/upload/) 单独分类 — 上传目录里的 PHP 文件后续被访问 = 高度可疑
+#   - 中国菜刀/蚁剑/behinder/哥斯拉等著名 shell 工具的命名特征 (短名 / 随机名)
+
+webshell_paths:
+
+  # ============== 一线: 通用 PHP webshell 文件名 ==============
+  - id: generic_php
+    name: 通用 PHP webshell (短名/单字符)
+    category: shell_php
+    description: 常见 PHP webshell 文件名. 攻击者常改成短名/单字符避开检测.
+    methods: [GET, POST]
+    patterns:
+      - /shell.php
+      - /cmd.php
+      - /command.php
+      - /webshell.php
+      - /backdoor.php
+      - /back.php
+      - /b.php
+      - /a.php
+      - /c.php
+      - /d.php
+      - /e.php
+      - /f.php
+      - /x.php
+      - /y.php
+      - /z.php
+      - /1.php
+      - /2.php
+      - /0.php
+      - /hack.php
+      - /hacker.php
+      - /r57.php          # 老牌 r57 shell
+      - /c99.php          # 老牌 c99 shell
+      - /wso.php          # WSO shell
+      - /caidao.php       # 中国菜刀
+      - /antsword.php     # 蚁剑
+      - /behinder.php     # 冰蝎 (冰蝎以 .jsp 为主)
+      - /godzilla.php     # 哥斯拉
+
+  # ============== 二线: 通用 JSP/ASPX webshell 文件名 ==============
+  - id: generic_jsp
+    name: 通用 JSP webshell
+    category: shell_jsp
+    description: 常见 JSP webshell. 冰蝎/哥斯拉的命名特征.
+    methods: [GET, POST]
+    patterns:
+      - /shell.jsp
+      - /cmd.jsp
+      - /command.jsp
+      - /behinder.jsp
+      - /ant.jsp
+      - /antsword.jsp
+      - /godzilla.jsp
+      - /webshell.jsp
+      - /backdoor.jsp
+      - /b.jsp
+      - /a.jsp
+      - /x.jsp
+      - /cmd.jspx
+      - /shell.jspx
+
+  - id: generic_aspx
+    name: 通用 ASPX/ASP webshell
+    category: shell_aspx
+    description: 常见 ASPX webshell.
+    methods: [GET, POST]
+    patterns:
+      - /shell.aspx
+      - /cmd.aspx
+      - /command.aspx
+      - /webshell.aspx
+      - /ant.aspx
+      - /b.aspx
+      - /cmd.asp
+      - /shell.asp
+
+  # ============== 三线: 已知高度可疑的 webshell 路径 ==============
+  # 来自真实 CTF 应急题的历史路径模式
+  - id: ctf_known_paths
+    name: 真实 CTF 题常见 webshell 路径
+    category: shell_known
+    description: 历史 CTF 应急题里出现过的 webshell 路径. 命中即高度可疑.
+    methods: [GET, POST]
+    patterns:
+      - /songgeshigedashuaibi/     # CTF 老题经典 (宋哥哥打水费)
+      - /webshell/
+      - /phpinfo.php
+      - /php.ini
+      - /eval.php
+      - /e.php
+      - /test.php
+      - /info.php
+
+  # ============== 四线: 上传目录 ==============
+  # 命中这些目录的访问算"可疑上传后访问" — 结合 v0.5.0 时间线关联逻辑.
+  # 注意: /images /img /static /assets /files /media 都是正常静态资源目录,
+  #       访问 .js .png .css 是正常浏览器行为, 不能算"webshell 访问". 故不放.
+  - id: upload_dir
+    name: 上传目录 (后续访问 = 高度可疑)
+    category: upload_dir
+    description: 常见上传目录. 单独分类, 关联 multipart 上传时间线.
+    methods: [GET, POST]
+    patterns:
+      - /upload/
+      - /uploads/
+      - /uploaded/
+      - /userfiles/
+      - /attachments/
+      - /tmp/
+      - /temp/
