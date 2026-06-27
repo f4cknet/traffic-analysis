@@ -7,8 +7,8 @@
 | v0.1.0 | 项目骨架 | ✅ 已发布 | README + 5 份核心文档 + .gitignore |
 | v0.2.0 | 首模块：扫描器识别 | ✅ 已发布 | scanners.yaml + 三段式匹配 + 41 单测 |
 | v0.3.0 | 第二模块：登录后台检测 (login-analyze) | ✅ 已发布 | login_paths.yaml + 双重过滤 + 38 单测 |
-| v0.4.0 | 第三模块：登录凭证提取 (credential-analyze) | 🚧 进行中 | POST body 解析 + 字段别名 + 端到端验证 |
-| v0.5.0 | webshell 专项 | ⏳ | POST multipart 检测 + 上传时间轴 |
+| v0.4.0 | 第三模块：登录凭证提取 (credential-analyze) | ✅ 已发布 | POST body 解析 + 字段别名 yaml + --login-success-code 参数 |
+| v0.5.0 | 第四模块：webshell 专项 | 🚧 进行中 | multipart 上传 + URL 参数密码识别 + 时间线关联 |
 | v0.6.0 | 多协议支持 | ⏳ | SMB / FTP / MySQL / Redis |
 | v0.7.0 | 自动化答题 | ⏳ | 从题目描述自动判定问题类型 |
 | v1.0.0 | 公开版本 | ⏳ | 文档 + 测试 + CI + 跨平台 |
@@ -185,14 +185,72 @@ hits (path_id × IP × ts)
 
 ## v0.5.0 — webshell 专项
 
-**目标**：精确定位 webshell 文件名、上传时间、密码。
+**目标**：精确定位 webshell 的 **三问答案**：文件名、上传时间、密码。
+
+**核心三问**：
+1. **webshell 文件名** — 上传请求 body 里的 `filename=` 参数（multipart/form-data）
+2. **上传时间** — 上传请求的 ts_epoch
+3. **webshell 密码** — 后续访问时的密码参数（URL query 或 body：`pass=`, `pwd=`, `key=`, `code=`, `x=`, `cmd=` 等）
+
+**核心洞察**：
+- **上传 ≠ 确认是 webshell** — 普通 upload.php 上传图片不算。需要**后续被可疑访问**才确认（关联：先有 upload，再有 access）
+- **multipart 解析**: tshark 已经导出 `http.content_type` + `http.file_data`（v0.4.0 加的）。v0.5.0 用 content_type 判定 multipart，再用自写的解析器抽 filename
+- **密码识别**: 跟 credential_analyze 同套路 — yaml 驱动字段别名表（`pass / pwd / key / code / x / z0..z2 / cmd / c / command`），大小写不敏感
+
+**架构**：
+- 新 module `src/module/webshell_analyze/`（CLI: `webshell`）
+- `rules/webshell_paths.yaml` — webshell 文件路径模式（`/shell.php`, `/cmd.php`, `/c.php`, `/ant.jsp`, `/behinder.jsp` 等通用名）+ 上传目录（`/upload/`, `/uploads/`, `/files/`）
+- `rules/webshell_fields.yaml` — 密码/命令字段别名（yaml 化，参照 credential_analyze 的 field_aliases.yaml）
+- `script/matcher.py`:
+  - `is_multipart_upload(rec)` — Content-Type 是 multipart/form-data
+  - `parse_multipart_filename(body, boundary)` — 从 multipart body 抽 `filename=`
+  - `match_webshell_path(uri_path, paths_data)` — URI 路径匹配 webshell_paths.yaml
+  - `extract_url_params(uri)` — 从 URL query 抽 pass/pwd/cmd 等
+  - `extract_body_params(body, content_type)` — 从 urlencoded body 抽参数
+- `script/aggregator.py`:
+  - `collect_uploads(http_data)` — multipart 上传请求集合
+  - `collect_accesses(http_data)` — URL 命中 webshell_paths.yaml 或 URL 参数含密码字段
+  - `link_uploads_to_accesses(uploads, accesses)` — 时间线关联（先 upload 后 access）
+- `script/report.py`: 控制台输出（时间线 + 文件聚合 + 攻击者画像）
+- `script/field_aliases.py`: 字段别名 helper（参照 credential_analyze 的）
+
+**输出示例**（伪）：
+```
+[!] 可疑 webshell 活动 (multipart 上传 + URL 参数访问):
+
+  #1 /songgeshigedashuaibi/hello.html
+     上传时间: 2018-08-08 15:42:13  IP: 192.168.94.59
+     Content-Type: multipart/form-data; boundary=----WebKitFormBoundaryxxxx
+     后续访问: 5 次
+       2018-08-08 15:43:21  POST /songgeshigedashuaibi/hello.html  ?pass=xxx&cmd=whoami  (200)
+       2018-08-08 15:44:05  POST /songgeshigedashuaibi/hello.html  ?cmd=id              (200)
+       ...
+```
+
+**端到端验证**（web_attack.pcap）：
+- 已知 webshell 路径：`/songgeshigedashuaibi/hello.html`（CTF 老题常见路径）
+- 期望找到：上传请求时间 + 后续访问的 pass/cmd 参数
+
+**测试**：
+- pytest fixture: 构造 multipart 上传 + URL 参数访问请求
+- 验证: filename 抽取、字段识别、关联
+
+**已知限制**（v0.5.0 范围外，留后续）：
+- binary body 完整提取（webshell 内容解码 base64）— v0.6.0
+- response body 关键字扫描（flag）— v0.6.0
+- 复杂 multipart 嵌套 — 当前只处理单层
 
 **交付**：
-- [ ] POST multipart 上传检测（`Content-Type: multipart/form-data`）
-- [ ] 文件写入时间轴（基于流量时间戳）
-- [ ] webshell 访问时间轴（基于响应）
-- [ ] webshell 内容提取（base64 / 混淆解码）
-- [ ] 密码参数识别（cmd=, pass=, key= 等）
+- [x] multipart 上传检测（Content-Type 判定 + filename 抽取）
+- [x] webshell 路径模式匹配（yaml 驱动）
+- [x] URL 参数识别（pass/pwd/cmd/key/code/x 等）
+- [x] body 参数识别（urlencoded + multipart 二进制）
+- [x] 上传 + 访问 时间线关联
+- [x] 攻击者画像（按 IP）
+- [ ] webshell 内容 base64 解码（v0.6.0）
+- [ ] response body flag 扫描（v0.6.0）
+
+---
 
 ---
 
